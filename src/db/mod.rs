@@ -6,10 +6,10 @@ pub mod user;
 pub use user::store_user;
 
 #[cfg(debug_assertions)]
-const SERVER_ADDR: &str = "redis://127.0.0.1:6379/preprod";
+const SERVER_ADDR: &str = "redis://127.0.0.1:6379/0";
 
 #[cfg(not(debug_assertions))]
-const SERVER_ADDR: &str = "redis://127.0.0.1:6379/prod";
+const SERVER_ADDR: &str = "redis://127.0.0.1:6379/8";
 
 lazy_static! {
   static ref DB_CLIENT: Client = get_client();
