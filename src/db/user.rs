@@ -4,6 +4,7 @@ use rand::{self, Rng};
 use redis::{self, Commands};
 
 use crate::db::get_connection;
+use crate::db::sessions;
 use crate::error::{self, ServerError};
 use crate::token::Token;
 use crate::user;
@@ -41,7 +42,7 @@ pub fn store_user(user: &user::User) -> Result<Token, ServerError> {
     let hashed_pwd = hash(&user.password.as_str(), &salt_pwd.as_str());
     let hashed_mail = hash(&user.email.as_str(), &salt_mail.as_str());
 
-    let user_id: i32 = c.incr(NEXT_USER_ID, 1)?;
+    let user_id: u32 = c.incr(NEXT_USER_ID, 1)?;
     let user_key = format!("user:{}", user_id.to_string());
     c.hset_multiple(
       &user_key,
@@ -55,6 +56,7 @@ pub fn store_user(user: &user::User) -> Result<Token, ServerError> {
       ],
     )?;
     c.hset(USERS_LIST, &user.username, user_id)?;
+    sessions::store_session(&auth, user_id)?;
     Ok(auth.into())
   }
 }

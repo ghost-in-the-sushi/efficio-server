@@ -2,6 +2,7 @@ use lazy_static::lazy_static;
 use redis::{self, Client, Connection};
 
 pub mod user;
+pub mod sessions;
 
 pub use user::store_user;
 
