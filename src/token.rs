@@ -4,7 +4,7 @@ use std::ops::Deref;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Token {
-  session_token: String,
+  pub session_token: String,
 }
 
 impl Deref for Token {

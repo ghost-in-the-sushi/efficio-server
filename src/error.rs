@@ -1,10 +1,12 @@
 use failure::Fail;
 use redis::RedisError;
 use serde::Serialize;
-use std::error::Error as StdError;
+use std::error::Error;
 use std::fmt::Display;
 
 pub const USERNAME_TAKEN: i32 = 100;
+pub const INVALID_USER_OR_PWD: i32 = 150;
+pub const UNAUTHORISED: i32 = 200;
 pub const INVALID_PARAMS: i32 = 2;
 
 #[derive(Debug, Clone, Fail, Serialize)]
@@ -27,3 +29,5 @@ impl From<RedisError> for ServerError {
     }
   }
 }
+
+pub type Result<T> = std::result::Result<T, ServerError>;

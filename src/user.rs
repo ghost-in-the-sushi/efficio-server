@@ -5,14 +5,11 @@ use regex::Regex;
 use validator;
 use zxcvbn;
 
+use crate::consts::*;
 use crate::db;
-use crate::error::{self, ServerError};
+use crate::error::{self, ServerError, Result};
+use crate::helpers::*;
 use crate::token::Token;
-
-const K_USERNAME: &str = "username";
-const K_EMAIL: &str = "email";
-const K_PASSWORD: &str = "password";
-const MIN_ENTROPY_SCORE: u8 = 2;
 
 #[derive(Default, Debug)]
 pub struct User {
@@ -28,29 +25,11 @@ impl Drop for User {
   }
 }
 
-pub fn create_user(user_json: HashMap<String, String>) -> Result<Token, ServerError> {
+pub fn create_user(user_json: HashMap<String, String>) -> Result<Token> {
   let user = User {
-    username: user_json
-      .get(K_USERNAME)
-      .ok_or_else(|| ServerError {
-        status: error::INVALID_PARAMS,
-        msg: "Missing username".to_string(),
-      })?
-      .to_string(),
-    email: user_json
-      .get(K_EMAIL)
-      .ok_or_else(|| ServerError {
-        status: error::INVALID_PARAMS,
-        msg: "Missing email".to_string(),
-      })?
-      .to_string(),
-    password: user_json
-      .get(K_PASSWORD)
-      .ok_or_else(|| ServerError {
-        status: error::INVALID_PARAMS,
-        msg: "Missing password".to_string(),
-      })?
-      .to_string(),
+    username: extract_value(&user_json, K_USERNAME, "Missing username")?,
+    email: extract_value(&user_json, K_EMAIL, "Missing email")?,
+    password: extract_value(&user_json, K_PASSWORD, "Missing password")?,
   };
 
   validate_email(&user.email)?;
@@ -60,7 +39,7 @@ pub fn create_user(user_json: HashMap<String, String>) -> Result<Token, ServerEr
   db::store_user(&user)
 }
 
-fn validate_email(mail: &str) -> Result<(), ServerError> {
+fn validate_email(mail: &str) -> Result<()> {
   if !validator::validate_email(mail) {
     Err(ServerError {
       status: error::INVALID_PARAMS,
@@ -71,7 +50,7 @@ fn validate_email(mail: &str) -> Result<(), ServerError> {
   }
 }
 
-fn validate_password(user: &User) -> Result<(), ServerError> {
+fn validate_password(user: &User) -> Result<()> {
   let entropy = zxcvbn::zxcvbn(&user.password, &[&user.username, &user.email]).or_else(|_| {
     Err(ServerError {
       status: error::INVALID_PARAMS,
@@ -101,7 +80,7 @@ fn validate_password(user: &User) -> Result<(), ServerError> {
   }
 }
 
-fn validate_username(username: &str) -> Result<(), ServerError> {
+fn validate_username(username: &str) -> Result<()> {
   lazy_static! {
     static ref VALID_USERNAME_RE: Regex =
       Regex::new(r"^[a-zA-Z][0-9a-zA-Z_]*$").expect("Error in compiling username regex");

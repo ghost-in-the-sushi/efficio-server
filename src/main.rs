@@ -1,8 +1,11 @@
 use failure::{self, Fail};
 use warp::{self, http::StatusCode, Filter, Rejection, Reply};
 
+mod consts;
 mod db;
 mod error;
+mod helpers;
+mod sessions;
 mod token;
 mod user;
 
@@ -22,15 +25,33 @@ fn main() {
     let nuke = warp::path("nuke").and_then(|| nuke());
 
     // POST /user
-    let create_user =
-        warp::path("user")
-            .and(warp::body::json())
-            .and_then(|obj| match user::create_user(obj) {
-                Ok(token) => Ok(warp::reply::json(&token)),
-                Err(e) => Err(warp::reject::custom(e.compat())),
-            });
+    let create_user = warp::path("user").and(warp::body::json()).and_then(|obj| {
+        user::create_user(obj)
+            .and_then(|token| Ok(warp::reply::json(&token)))
+            .or_else(|e| Err(warp::reject::custom(e.compat())))
+    });
 
-    let post_routes = warp::post2().and(create_user).recover(customize_error);
+    // POST /login
+    let login = warp::path("login").and(warp::body::json()).and_then(|obj| {
+        sessions::login(obj)
+            .and_then(|token| Ok(warp::reply::json(&token)))
+            .or_else(|e| Err(warp::reject::custom(e.compat())))
+    });
+
+    // POST /logout
+    let logout = warp::path("logout")
+        .and(warp::header::<String>("session_token"))
+        .and_then(|auth| {
+            sessions::logout(auth)
+                .and_then(|()| Ok(warp::reply()))
+                .or_else(|e| Err(warp::reject::custom(e.compat())))
+        });
+
+    let post_routes = warp::post2()
+        .and(create_user)
+        .or(login)
+        .or(logout)
+        .recover(customize_error);
     let get_routes = warp::get2().and(nuke);
 
     println!("Efficio's ready for requests...");
