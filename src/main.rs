@@ -47,15 +47,25 @@ fn main() {
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
 
+    // DELETE /user
+    let delete_user = warp::path("user")
+        .and(warp::header::<String>("session_token"))
+        .and_then(|auth| {
+            user::delete_user(auth)
+                .and_then(|()| Ok(warp::reply()))
+                .or_else(|e| Err(warp::reject::custom(e.compat())))
+        });
+
     let post_routes = warp::post2()
         .and(create_user)
         .or(login)
         .or(logout)
         .recover(customize_error);
     let get_routes = warp::get2().and(nuke);
+    let del_routes = warp::delete2().and(delete_user);
 
     println!("Efficio's ready for requests...");
-    warp::serve(post_routes.or(get_routes)).run(([127, 0, 0, 1], 3030));
+    warp::serve(post_routes.or(get_routes).or(del_routes)).run(([127, 0, 0, 1], 3030));
 }
 
 fn customize_error(err: Rejection) -> Result<impl Reply, Rejection> {

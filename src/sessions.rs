@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::consts::*;
 use crate::db::{sessions, user};
-use crate::error::{self, Result, ServerError};
+use crate::error::Result;
 use crate::helpers::*;
 use crate::token::Token;
 
@@ -28,6 +28,7 @@ pub fn login(auth_struct: HashMap<String, String>) -> Result<Token> {
 }
 
 pub fn logout(auth: String) -> Result<()> {
-  sessions::del_session(&auth)?;
+  sessions::validate_session(&auth)?;
+  sessions::delete_session(&auth)?;
   Ok(())
 }

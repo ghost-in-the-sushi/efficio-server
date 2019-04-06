@@ -7,7 +7,7 @@ use zxcvbn;
 
 use crate::consts::*;
 use crate::db;
-use crate::error::{self, ServerError, Result};
+use crate::error::{self, Result, ServerError};
 use crate::helpers::*;
 use crate::token::Token;
 
@@ -37,6 +37,11 @@ pub fn create_user(user_json: HashMap<String, String>) -> Result<Token> {
   validate_username(&user.username)?;
 
   db::store_user(&user)
+}
+
+pub fn delete_user(auth: String) -> Result<()> {
+  db::sessions::validate_session(&auth)?;
+  db::user::delete_user(&auth)
 }
 
 fn validate_email(mail: &str) -> Result<()> {

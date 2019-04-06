@@ -8,6 +8,7 @@ pub const USERNAME_TAKEN: i32 = 100;
 pub const INVALID_USER_OR_PWD: i32 = 150;
 pub const UNAUTHORISED: i32 = 200;
 pub const INVALID_PARAMS: i32 = 2;
+pub const INTERNAL_ERROR: i32 = 500;
 
 #[derive(Debug, Clone, Fail, Serialize)]
 pub struct ServerError {
