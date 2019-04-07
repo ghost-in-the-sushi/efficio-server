@@ -1,10 +1,11 @@
 use lazy_static::lazy_static;
 use redis::{self, Client, Connection};
 
-pub mod user;
 pub mod sessions;
+pub mod stores;
+pub mod users;
 
-pub use user::store_user;
+pub use users::save_user;
 
 #[cfg(debug_assertions)]
 const SERVER_ADDR: &str = "redis://127.0.0.1:6379/0";

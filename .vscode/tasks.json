@@ -22,7 +22,7 @@
     {
       "type": "shell",
       "label": "cargo test",
-      "command": "cargo test",
+      "command": "cargo test -- --test-threads=1",
       "problemMatcher": [
         "$rustc"
       ],

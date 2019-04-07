@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::consts::*;
-use crate::db::{sessions, user};
+use crate::db::{sessions, users};
 use crate::error::Result;
 use crate::helpers::*;
 use crate::token::Token;
@@ -22,8 +22,8 @@ pub fn login(auth_struct: HashMap<String, String>) -> Result<Token> {
     username: extract_value(&auth_struct, K_USERNAME, "Missing username")?,
     password: extract_value(&auth_struct, K_PASSWORD, "Missing password")?,
   };
-  let (token, user_id) = user::verify_password(&auth_info)?;
-  sessions::store_session(&token.session_token, user_id)?;
+  let (token, user_id) = users::verify_password(&auth_info)?;
+  sessions::store_session(&token.session_token, &user_id)?;
   Ok(token)
 }
 

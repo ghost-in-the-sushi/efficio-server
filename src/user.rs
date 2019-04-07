@@ -36,12 +36,12 @@ pub fn create_user(user_json: HashMap<String, String>) -> Result<Token> {
   validate_password(&user)?;
   validate_username(&user.username)?;
 
-  db::store_user(&user)
+  db::save_user(&user)
 }
 
 pub fn delete_user(auth: String) -> Result<()> {
   db::sessions::validate_session(&auth)?;
-  db::user::delete_user(&auth)
+  db::users::delete_user(&auth)
 }
 
 fn validate_email(mail: &str) -> Result<()> {

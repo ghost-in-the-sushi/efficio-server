@@ -5,8 +5,10 @@ mod consts;
 mod db;
 mod error;
 mod helpers;
-mod sessions;
+mod session;
+mod store;
 mod token;
+mod types;
 mod user;
 
 // Reset the DB, only available in debug compilation
@@ -33,7 +35,7 @@ fn main() {
 
     // POST /login
     let login = warp::path("login").and(warp::body::json()).and_then(|obj| {
-        sessions::login(obj)
+        session::login(obj)
             .and_then(|token| Ok(warp::reply::json(&token)))
             .or_else(|e| Err(warp::reject::custom(e.compat())))
     });
@@ -42,7 +44,7 @@ fn main() {
     let logout = warp::path("logout")
         .and(warp::header::<String>("session_token"))
         .and_then(|auth| {
-            sessions::logout(auth)
+            session::logout(auth)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
