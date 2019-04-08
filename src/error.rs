@@ -6,7 +6,8 @@ use std::fmt::Display;
 
 pub const USERNAME_TAKEN: i32 = 100;
 pub const INVALID_USER_OR_PWD: i32 = 150;
-pub const UNAUTHORISED: i32 = 200;
+pub const STORENAME_TAKEN: i32 = 200;
+pub const UNAUTHORISED: i32 = 400;
 pub const INVALID_PARAMS: i32 = 2;
 pub const INTERNAL_ERROR: i32 = 500;
 
@@ -32,3 +33,12 @@ impl From<RedisError> for ServerError {
 }
 
 pub type Result<T> = std::result::Result<T, ServerError>;
+
+impl ServerError {
+  pub fn new(status: i32, msg: &str) -> Self {
+    ServerError {
+      status: status,
+      msg: msg.to_owned(),
+    }
+  }
+}

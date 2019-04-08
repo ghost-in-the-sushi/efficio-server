@@ -18,10 +18,10 @@ pub fn get_user_id(c: &redis::Connection, auth: &str) -> Result<UserId> {
 pub fn store_session(auth: &str, user_id: &UserId) -> Result<()> {
   let c = get_connection()?;
   if c.hexists(SESSIONS_LIST, auth)? {
-    Err(ServerError {
-      status: error::INTERNAL_ERROR,
-      msg: "Auth already exists".to_string(),
-    })
+    Err(ServerError::new(
+      error::INTERNAL_ERROR,
+      "Auth already exists",
+    ))
   } else {
     let user_session_key = user_session_key(user_id);
     redis::transaction(&c, &[SESSIONS_LIST, &user_session_key], |pipe| {
@@ -41,10 +41,7 @@ pub fn validate_session(auth: &str) -> Result<()> {
   if c.hexists(SESSIONS_LIST, auth)? {
     Ok(())
   } else {
-    Err(ServerError {
-      status: error::UNAUTHORISED,
-      msg: "Not logged in".to_string(),
-    })
+    Err(ServerError::new(error::UNAUTHORISED, "Not logged in"))
   }
 }
 
@@ -86,17 +83,21 @@ pub fn delete_all_user_sessions(auth: &str) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
   use super::*;
 
-  const AUTH: &str = "tokenauth";
+  pub const AUTH: &str = "tokenauth";
 
-  fn store_session_test() {
-    users::tests::reset_db();
+  pub fn store_session_for_test() {
     assert_eq!(true, store_session(AUTH, &UserId(1)).is_ok());
     let c = get_connection().unwrap();
     let res: bool = c.hexists(SESSIONS_LIST, AUTH).unwrap();
     assert_eq!(true, res);
+  }
+
+  fn store_session_test() {
+    users::tests::reset_db();
+    store_session_for_test();
     assert_eq!(false, store_session(AUTH, &UserId(1)).is_ok());
   }
 

@@ -40,10 +40,10 @@ pub fn save_user(user: &user::User) -> Result<Token> {
   let c = get_connection()?;
   let norm_username = user.username.to_lowercase();
   if c.hexists(USERS_LIST, &norm_username)? {
-    Err(ServerError {
-      status: error::USERNAME_TAKEN,
-      msg: format!("Username {} is not available.", &user.username),
-    })
+    Err(ServerError::new(
+      error::USERNAME_TAKEN,
+      &format!("Username {} is not available.", &user.username),
+    ))
   } else {
     let mut rng = rand::thread_rng();
     let auth = gen_auth(&mut rng);
@@ -86,10 +86,10 @@ pub fn verify_password(auth_info: &AuthInfo) -> Result<(Token, UserId)> {
   let user_id = UserId(
     c.hget(USERS_LIST, &auth_info.username.to_lowercase())
       .or_else(|_| {
-        Err(ServerError {
-          status: error::INVALID_USER_OR_PWD,
-          msg: "Invalid usename or password".to_string(),
-        })
+        Err(ServerError::new(
+          error::INVALID_USER_OR_PWD,
+          "Invalid usename or password",
+        ))
       })?,
   );
   let user_key = user_key(&user_id);
@@ -100,10 +100,10 @@ pub fn verify_password(auth_info: &AuthInfo) -> Result<(Token, UserId)> {
     let auth: String = c.hget(&user_key, USER_AUTH)?;
     Ok((auth.into(), user_id))
   } else {
-    Err(ServerError {
-      status: error::INVALID_USER_OR_PWD,
-      msg: "Invalid usename or password".to_string(),
-    })
+    Err(ServerError::new(
+      error::INVALID_USER_OR_PWD,
+      "Invalid usename or password",
+    ))
   }
 }
 
@@ -122,7 +122,7 @@ pub mod tests {
     let _: () = redis::cmd("FLUSHDB").query(&c).expect("error on flush");
   }
 
-  fn gen_user() -> user::User {
+  pub fn gen_user() -> user::User {
     user::User {
       username: "toto".to_string(),
       password: "pwd".to_string(),

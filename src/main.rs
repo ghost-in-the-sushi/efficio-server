@@ -58,10 +58,21 @@ fn main() {
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
 
+    // POST /store
+    let create_store = warp::path("store")
+        .and(warp::body::json())
+        .and(warp::header::<String>("session_token"))
+        .and_then(|obj, auth| {
+            store::create_store(auth, obj)
+                .and_then(|store_id| Ok(warp::reply::json(&store_id)))
+                .or_else(|e| Err(warp::reject::custom(e.compat())))
+        });
+
     let post_routes = warp::post2()
         .and(create_user)
         .or(login)
         .or(logout)
+        .or(create_store)
         .recover(customize_error);
     let get_routes = warp::get2().and(nuke);
     let del_routes = warp::delete2().and(delete_user);

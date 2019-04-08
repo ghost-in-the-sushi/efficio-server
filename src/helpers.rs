@@ -9,10 +9,7 @@ pub fn extract_value(
 ) -> Result<String, ServerError> {
   Ok(
     h.get(key)
-      .ok_or_else(|| ServerError {
-        status: error::INVALID_PARAMS,
-        msg: err_msg.to_string(),
-      })?
+      .ok_or_else(|| ServerError::new(error::INVALID_PARAMS, err_msg))?
       .to_string(),
   )
 }

@@ -64,9 +64,9 @@ fn validate_password(user: &User) -> Result<()> {
   })?;
 
   if entropy.score < MIN_ENTROPY_SCORE {
-    Err(ServerError {
-      status: error::INVALID_PARAMS,
-      msg: format!(
+    Err(ServerError::new(
+      error::INVALID_PARAMS,
+      &format!(
         "Password field is too weak (score: {}): {}",
         entropy.score.to_string(),
         entropy
@@ -79,7 +79,7 @@ fn validate_password(user: &User) -> Result<()> {
           .unwrap_or_else(|| "Unknown reason")
           .to_string()
       ),
-    })
+    ))
   } else {
     Ok(())
   }
@@ -92,10 +92,7 @@ fn validate_username(username: &str) -> Result<()> {
   }
 
   if !VALID_USERNAME_RE.is_match(username) {
-    Err(ServerError {
-      status: error::INVALID_PARAMS,
-      msg: "Invalid username".to_string(),
-    })
+    Err(ServerError::new(error::INVALID_PARAMS, "Invalid username"))
   } else {
     Ok(())
   }
