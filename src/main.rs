@@ -81,11 +81,7 @@ fn main() {
         });
 
     let post_routes = warp::post2()
-        .and(create_user)
-        .or(login)
-        .or(logout)
-        .or(create_store)
-        .or(nuke)
+        .and(create_user.or(login).or(logout).or(create_store).or(nuke))
         .recover(customize_error);
 
     let put_routes = warp::put2().and(edit_store).recover(customize_error);
@@ -93,7 +89,7 @@ fn main() {
     let del_routes = warp::delete2().and(delete_user).recover(customize_error);
 
     println!("Efficio's ready for requests...");
-    warp::serve(put_routes.or(post_routes).or(del_routes)).run(([127, 0, 0, 1], 3030));
+    warp::serve(post_routes.or(put_routes).or(del_routes)).run(([127, 0, 0, 1], 3030));
 }
 
 fn customize_error(err: Rejection) -> Result<impl Reply, Rejection> {

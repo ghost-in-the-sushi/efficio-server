@@ -36,8 +36,6 @@ pub fn save_store(auth: &Auth, name: &str) -> Result<StoreId> {
 }
 
 pub fn edit_store(id: &StoreId, new_name: &str) -> Result<()> {
-  dbg!(id);
-  dbg!(new_name);
   let c = get_connection()?;
   Ok(c.hset(&store_key(&id), STORE_NAME, new_name)?)
 }
