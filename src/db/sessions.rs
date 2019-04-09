@@ -7,7 +7,7 @@ use crate::types::*;
 
 const SESSIONS_LIST: &str = "sessions";
 
-fn user_session_key(user_id: &UserId) -> String {
+fn user_sessions_key(user_id: &UserId) -> String {
   format!("sessions:{}", user_id.to_string())
 }
 
@@ -24,7 +24,7 @@ pub fn store_session(auth: &str, user_id: &UserId) -> Result<()> {
       "Auth already exists",
     ))
   } else {
-    let user_session_key = user_session_key(user_id);
+    let user_session_key = user_sessions_key(user_id);
     redis::transaction(&c, &[SESSIONS_LIST, &user_session_key], |pipe| {
       pipe
         .hset(SESSIONS_LIST, auth, **user_id)
@@ -40,7 +40,15 @@ pub fn store_session(auth: &str, user_id: &UserId) -> Result<()> {
 pub fn validate_session(auth: &Auth) -> Result<()> {
   let c = get_connection()?;
   if c.hexists(SESSIONS_LIST, auth.0)? {
-    Ok(())
+    let user_id = get_user_id(&c, auth)?;
+    if c.sismember(&user_sessions_key(&user_id), auth.0)? {
+      Ok(())
+    } else {
+      Err(ServerError::new(
+        error::UNAUTHORISED,
+        "x-auth-token does not belong to this user",
+      ))
+    }
   } else {
     Err(ServerError::new(error::UNAUTHORISED, "Not logged in"))
   }
@@ -51,7 +59,7 @@ fn delete_session_with_connection(
   auth: &Auth,
   user_id: &UserId,
 ) -> Result<()> {
-  let user_session_key = user_session_key(user_id);
+  let user_session_key = user_sessions_key(user_id);
   Ok(redis::transaction(
     c,
     &[SESSIONS_LIST, &user_session_key],
@@ -76,7 +84,7 @@ pub fn delete_session(auth: &Auth) -> Result<()> {
 pub fn delete_all_user_sessions(auth: &Auth) -> Result<()> {
   let c = get_connection()?;
   let user_id = UserId(c.hget(SESSIONS_LIST, auth.0)?);
-  let all_user_sessions: Vec<String> = c.smembers(user_session_key(&user_id))?;
+  let all_user_sessions: Vec<String> = c.smembers(user_sessions_key(&user_id))?;
   all_user_sessions
     .iter()
     .map(|a| delete_session_with_connection(&c, &Auth(a), &user_id))
@@ -97,7 +105,7 @@ pub mod tests {
     let c = get_connection().unwrap();
     let res: bool = c.hexists(SESSIONS_LIST, auth.0).unwrap();
     assert_eq!(true, res);
-    let res: bool = c.sismember(&user_session_key(&user_id), auth.0).unwrap();
+    let res: bool = c.sismember(&user_sessions_key(&user_id), auth.0).unwrap();
     assert_eq!(true, res);
   }
 
@@ -112,6 +120,10 @@ pub mod tests {
     store_session_test_with_reset();
     assert_eq!(true, validate_session(&AUTH).is_ok());
     assert_eq!(false, validate_session(&Auth("notpresentauth")).is_ok());
+    let c = get_connection().unwrap();
+    // tamper user sessions list
+    let _: i32 = c.srem(&user_sessions_key(&UserId(1)), AUTH.0).unwrap();
+    assert_eq!(false, validate_session(&AUTH).is_ok());
   }
 
   #[test]
@@ -145,7 +157,7 @@ pub mod tests {
     let c = get_connection().unwrap();
     let res: bool = c.exists(SESSIONS_LIST).unwrap();
     assert_eq!(false, res);
-    let res: bool = c.exists(user_session_key(&UserId(1))).unwrap();
+    let res: bool = c.exists(user_sessions_key(&UserId(1))).unwrap();
     assert_eq!(false, res);
   }
 
