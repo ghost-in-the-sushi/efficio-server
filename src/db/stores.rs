@@ -17,7 +17,7 @@ fn user_stores_list_key(user_id: &UserId) -> String {
   format!("stores:{}", user_id.to_string())
 }
 
-pub fn save_store(auth: &str, name: &str) -> Result<StoreId> {
+pub fn save_store(auth: &Auth, name: &str) -> Result<StoreId> {
   let c = get_connection()?;
   let store_id = StoreId::new(c.incr(NEXT_STORE_ID, 1)?);
   let user_id = sessions::get_user_id(&c, &auth)?;
@@ -27,12 +27,19 @@ pub fn save_store(auth: &str, name: &str) -> Result<StoreId> {
     pipe
       .hset(&store_key, STORE_NAME, name)
       .ignore()
-      .hset(&store_key, STORE_OWNER, user_id.0)
+      .hset(&store_key, STORE_OWNER, *user_id)
       .ignore()
       .sadd(&user_stores_key, *store_id)
       .query(&c)
   })?;
   Ok(store_id)
+}
+
+pub fn edit_store(id: &StoreId, new_name: &str) -> Result<()> {
+  dbg!(id);
+  dbg!(new_name);
+  let c = get_connection()?;
+  Ok(c.hset(&store_key(&id), STORE_NAME, new_name)?)
 }
 
 #[cfg(test)]
@@ -42,12 +49,13 @@ mod tests {
   use sessions::tests::*;
 
   const STORE_TEST_NAME: &str = "storetest";
+  const NEW_STORE_NAME: &str = "new_store_name";
 
   #[test]
   fn save_store_test() {
-    store_user_for_test();
-    store_session_for_test();
-    assert_eq!(true, save_store(STORE_TEST_NAME, AUTH).is_ok());
+    store_user_for_test_with_reset();
+    store_session_for_test(&AUTH);
+    assert_eq!(true, save_store(&AUTH, STORE_TEST_NAME).is_ok());
     let c = get_connection().unwrap();
     let store_key = store_key(&StoreId::new(1));
     let res: bool = c.exists(&store_key).unwrap();
@@ -61,5 +69,15 @@ mod tests {
     assert_eq!(true, res);
     let res: bool = c.sismember(&user_stores_list_key, 1).unwrap();
     assert_eq!(true, res);
+  }
+
+  #[test]
+  fn edit_store_test() {
+    save_store_test();
+    edit_store(&StoreId::new(1), NEW_STORE_NAME).unwrap();
+    let c = get_connection().unwrap();
+    let store_key = store_key(&StoreId::new(1));
+    let store_name: String = c.hget(&store_key, STORE_NAME).unwrap();
+    assert_eq!(NEW_STORE_NAME, &store_name);
   }
 }

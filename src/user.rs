@@ -10,6 +10,7 @@ use crate::db;
 use crate::error::{self, Result, ServerError};
 use crate::helpers::*;
 use crate::token::Token;
+use crate::types::*;
 
 #[derive(Default, Debug)]
 pub struct User {
@@ -40,6 +41,7 @@ pub fn create_user(user_json: HashMap<String, String>) -> Result<Token> {
 }
 
 pub fn delete_user(auth: String) -> Result<()> {
+  let auth = Auth(&auth);
   db::sessions::validate_session(&auth)?;
   db::users::delete_user(&auth)
 }

@@ -6,7 +6,6 @@ use std::fmt::Display;
 
 pub const USERNAME_TAKEN: i32 = 100;
 pub const INVALID_USER_OR_PWD: i32 = 150;
-pub const STORENAME_TAKEN: i32 = 200;
 pub const UNAUTHORISED: i32 = 400;
 pub const INVALID_PARAMS: i32 = 2;
 pub const INTERNAL_ERROR: i32 = 500;

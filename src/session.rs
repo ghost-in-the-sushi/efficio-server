@@ -5,6 +5,7 @@ use crate::db::{sessions, users};
 use crate::error::Result;
 use crate::helpers::*;
 use crate::token::Token;
+use crate::types::*;
 
 pub struct AuthInfo {
   pub username: String,
@@ -28,6 +29,7 @@ pub fn login(auth_struct: HashMap<String, String>) -> Result<Token> {
 }
 
 pub fn logout(auth: String) -> Result<()> {
+  let auth = Auth(&auth);
   sessions::validate_session(&auth)?;
   sessions::delete_session(&auth)?;
   Ok(())

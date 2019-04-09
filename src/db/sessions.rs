@@ -11,8 +11,9 @@ fn user_session_key(user_id: &UserId) -> String {
   format!("sessions:{}", user_id.to_string())
 }
 
-pub fn get_user_id(c: &redis::Connection, auth: &str) -> Result<UserId> {
-  Ok(UserId(c.hget(SESSIONS_LIST, auth)?))
+pub fn get_user_id(c: &redis::Connection, auth: &Auth) -> Result<UserId> {
+  let id = c.hget(SESSIONS_LIST, auth.0)?;
+  Ok(UserId(id))
 }
 
 pub fn store_session(auth: &str, user_id: &UserId) -> Result<()> {
@@ -26,7 +27,7 @@ pub fn store_session(auth: &str, user_id: &UserId) -> Result<()> {
     let user_session_key = user_session_key(user_id);
     redis::transaction(&c, &[SESSIONS_LIST, &user_session_key], |pipe| {
       pipe
-        .hset(SESSIONS_LIST, auth, user_id.0)
+        .hset(SESSIONS_LIST, auth, **user_id)
         .ignore()
         .sadd(&user_session_key, auth)
         .query(&c)
@@ -36,9 +37,9 @@ pub fn store_session(auth: &str, user_id: &UserId) -> Result<()> {
   }
 }
 
-pub fn validate_session(auth: &str) -> Result<()> {
+pub fn validate_session(auth: &Auth) -> Result<()> {
   let c = get_connection()?;
-  if c.hexists(SESSIONS_LIST, auth)? {
+  if c.hexists(SESSIONS_LIST, auth.0)? {
     Ok(())
   } else {
     Err(ServerError::new(error::UNAUTHORISED, "Not logged in"))
@@ -47,7 +48,7 @@ pub fn validate_session(auth: &str) -> Result<()> {
 
 fn delete_session_with_connection(
   c: &redis::Connection,
-  auth: &str,
+  auth: &Auth,
   user_id: &UserId,
 ) -> Result<()> {
   let user_session_key = user_session_key(user_id);
@@ -56,15 +57,15 @@ fn delete_session_with_connection(
     &[SESSIONS_LIST, &user_session_key],
     |pipe| {
       pipe
-        .hdel(SESSIONS_LIST, auth)
+        .hdel(SESSIONS_LIST, auth.0)
         .ignore()
-        .srem(&user_session_key, auth)
+        .srem(&user_session_key, auth.0)
         .query(c)
     },
   )?)
 }
 
-pub fn delete_session(auth: &str) -> Result<()> {
+pub fn delete_session(auth: &Auth) -> Result<()> {
   let c = get_connection()?;
   // save user_id before deleting the auth from sessions
   let user_id = get_user_id(&c, auth)?;
@@ -72,68 +73,75 @@ pub fn delete_session(auth: &str) -> Result<()> {
   users::regen_auth(&c, &user_id)
 }
 
-pub fn delete_all_user_sessions(auth: &str) -> Result<()> {
+pub fn delete_all_user_sessions(auth: &Auth) -> Result<()> {
   let c = get_connection()?;
-  let user_id = UserId(c.hget(SESSIONS_LIST, auth)?);
+  let user_id = UserId(c.hget(SESSIONS_LIST, auth.0)?);
   let all_user_sessions: Vec<String> = c.smembers(user_session_key(&user_id))?;
   all_user_sessions
     .iter()
-    .map(|a| delete_session_with_connection(&c, &a, &user_id))
+    .map(|a| delete_session_with_connection(&c, &Auth(a), &user_id))
     .collect()
 }
 
 #[cfg(test)]
 pub mod tests {
   use super::*;
+  use crate::db::tests::*;
 
-  pub const AUTH: &str = "tokenauth";
+  pub const AUTH: Auth = Auth("tokenauth");
+  pub const AUTH2: Auth = Auth("anothertokenauth");
 
-  pub fn store_session_for_test() {
-    assert_eq!(true, store_session(AUTH, &UserId(1)).is_ok());
+  pub fn store_session_for_test(auth: &Auth) {
+    let user_id = UserId(1);
+    assert_eq!(true, store_session(auth, &user_id).is_ok());
     let c = get_connection().unwrap();
-    let res: bool = c.hexists(SESSIONS_LIST, AUTH).unwrap();
+    let res: bool = c.hexists(SESSIONS_LIST, auth.0).unwrap();
+    assert_eq!(true, res);
+    let res: bool = c.sismember(&user_session_key(&user_id), auth.0).unwrap();
     assert_eq!(true, res);
   }
 
-  fn store_session_test() {
-    users::tests::reset_db();
-    store_session_for_test();
-    assert_eq!(false, store_session(AUTH, &UserId(1)).is_ok());
+  fn store_session_test_with_reset() {
+    reset_db();
+    store_session_for_test(&AUTH);
+    assert_eq!(false, store_session(&AUTH, &UserId(1)).is_ok());
   }
 
   #[test]
   fn validate_session_test() {
-    store_session_test();
-    assert_eq!(true, validate_session(AUTH).is_ok());
-    assert_eq!(false, validate_session("notpresentauth").is_ok());
+    store_session_test_with_reset();
+    assert_eq!(true, validate_session(&AUTH).is_ok());
+    assert_eq!(false, validate_session(&Auth("notpresentauth")).is_ok());
   }
 
   #[test]
   fn get_user_id_test() {
-    store_session_test();
+    store_session_test_with_reset();
     let c = get_connection().unwrap();
-    assert_eq!(1, get_user_id(&c, AUTH).unwrap().0);
+    assert_eq!(1, *get_user_id(&c, &AUTH).unwrap());
+    store_session_for_test(&AUTH2);
+    assert_eq!(1, *get_user_id(&c, &AUTH2).unwrap());
   }
 
   #[test]
   fn delete_session_test() {
-    users::tests::store_user_for_test();
+    users::tests::store_user_for_test_with_reset();
     let c = get_connection().unwrap();
     let user_auth: String = c.hget("user:1", "auth").unwrap();
     get_user_id_test();
-    assert_eq!(true, delete_session(AUTH).is_ok());
+    assert_eq!(true, delete_session(&AUTH).is_ok());
     let new_auth: String = c.hget("user:1", "auth").unwrap();
     // check that we change the auth token on logout
     assert_ne!(user_auth, new_auth);
-    let res: bool = c.hexists(SESSIONS_LIST, AUTH).unwrap();
+    let res: bool = c.hexists(SESSIONS_LIST, AUTH.0).unwrap();
     assert_eq!(false, res);
   }
 
   #[test]
   fn delete_all_user_sessions_test() {
-    store_session_test();
+    store_session_test_with_reset();
     assert_eq!(true, store_session("AUTH2", &UserId(1)).is_ok());
-    assert_eq!(true, delete_all_user_sessions(AUTH).is_ok());
+    assert_eq!(true, delete_all_user_sessions(&AUTH).is_ok());
     let c = get_connection().unwrap();
     let res: bool = c.exists(SESSIONS_LIST).unwrap();
     assert_eq!(false, res);

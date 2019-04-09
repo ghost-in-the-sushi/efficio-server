@@ -24,3 +24,13 @@ fn get_client() -> Client {
 pub fn get_connection() -> redis::RedisResult<Connection> {
   DB_CLIENT.get_connection()
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  pub fn reset_db() {
+    let c = get_connection().expect("should have connection");
+    let _: () = redis::cmd("FLUSHDB").query(&c).expect("error on flush");
+  }
+}

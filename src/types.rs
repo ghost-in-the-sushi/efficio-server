@@ -1,20 +1,17 @@
 use serde::Serialize;
 use std::ops::Deref;
 
-macro_rules! impl_deref {
-  ($s:ty, $t:ty) => {
-    impl Deref for $s {
-      type Target = $t;
-      fn deref(&self) -> &$t {
-        &self.0
-      }
-    }
-  };
-}
-
+#[derive(Debug)]
 pub struct UserId(pub u32);
 
-#[derive(Serialize)]
+impl Deref for UserId {
+  type Target = u32;
+  fn deref(&self) -> &u32 {
+    &self.0
+  }
+}
+
+#[derive(Serialize, Debug)]
 pub struct StoreId {
   store_id: u32,
 }
@@ -32,4 +29,10 @@ impl Deref for StoreId {
   }
 }
 
-impl_deref!(UserId, u32);
+pub struct Auth<'a>(pub &'a str);
+impl<'a> Deref for Auth<'a> {
+  type Target = str;
+  fn deref(&self) -> &str {
+    &self.0
+  }
+}

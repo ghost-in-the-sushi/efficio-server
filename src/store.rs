@@ -4,17 +4,16 @@ use crate::db;
 use crate::error::*;
 use crate::helpers;
 use crate::types::*;
-use crate::error::*;
 
 pub fn create_store(auth: String, obj: HashMap<String, String>) -> Result<StoreId> {
+  let auth = Auth(&auth);
   db::sessions::validate_session(&auth)?;
   let name = helpers::extract_value(&obj, "name", "Missing name")?;
-  if db::stores::store_exists(&name)? {
-    Err(ServerError::new(
-      error::STORENAME_TAKEN,
-      "Store name exists for this user",
-    ))
-  } else {
-    db::stores::save_store(&auth, &name)
-  }
+  db::stores::save_store(&auth, &name)
+}
+
+pub fn edit_store(auth: String, id: u32, obj: HashMap<String, String>) -> Result<()> {
+  db::sessions::validate_session(&Auth(&auth))?;
+  let name = helpers::extract_value(&obj, "name", "Missing name")?;
+  db::stores::edit_store(&StoreId::new(id), &name)
 }

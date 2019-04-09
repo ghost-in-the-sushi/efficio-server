@@ -64,13 +64,13 @@ pub fn save_user(user: &user::User) -> Result<Token> {
         (USER_AUTH, &auth),
       ],
     )?;
-    c.hset(USERS_LIST, &norm_username, user_id.0)?;
+    c.hset(USERS_LIST, &norm_username, *user_id)?;
     sessions::store_session(&auth, &user_id)?;
     Ok(auth.into())
   }
 }
 
-pub fn delete_user(auth: &str) -> Result<()> {
+pub fn delete_user(auth: &Auth) -> Result<()> {
   let c = get_connection()?;
   let user_id = sessions::get_user_id(&c, auth)?;
   let user_key = user_key(&user_id);
@@ -116,11 +116,7 @@ pub fn regen_auth(c: &redis::Connection, user_id: &UserId) -> Result<()> {
 #[cfg(test)]
 pub mod tests {
   use super::*;
-
-  pub fn reset_db() {
-    let c = get_connection().expect("should have connection");
-    let _: () = redis::cmd("FLUSHDB").query(&c).expect("error on flush");
-  }
+  use crate::db::tests::*;
 
   pub fn gen_user() -> user::User {
     user::User {
@@ -131,13 +127,17 @@ pub mod tests {
   }
 
   pub fn store_user_for_test() {
-    reset_db();
     let user = gen_user();
     assert_eq!(true, save_user(&user).is_ok());
   }
 
-  fn store_user_test() {
+  pub fn store_user_for_test_with_reset() {
+    reset_db();
     store_user_for_test();
+  }
+
+  fn store_user_test() {
+    store_user_for_test_with_reset();
     let user = gen_user();
     let c = get_connection().unwrap();
     let res: bool = c.exists("user:1").unwrap();
@@ -185,6 +185,7 @@ pub mod tests {
     store_user_test();
     let c = get_connection().unwrap();
     let auth: String = c.hget(&user_key(&UserId(1)), USER_AUTH).unwrap();
+    let auth = Auth(&auth);
     assert_eq!(true, delete_user(&auth).is_ok());
     let res: bool = c.exists(USERS_LIST).unwrap();
     assert_eq!(false, res);
@@ -193,6 +194,7 @@ pub mod tests {
     user.username = "tata".to_string();
     assert_eq!(true, save_user(&user).is_ok());
     let auth: String = c.hget(&user_key(&UserId(1)), USER_AUTH).unwrap();
+    let auth = Auth(&auth);
     assert_eq!(true, delete_user(&auth).is_ok());
     let res: bool = c.hexists(USERS_LIST, &user.username).unwrap();
     assert_eq!(true, res);

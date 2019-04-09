@@ -1,5 +1,5 @@
 use failure::{self, Fail};
-use warp::{self, http::StatusCode, Filter, Rejection, Reply};
+use warp::{self, http::StatusCode, path, Filter, Rejection, Reply};
 
 mod consts;
 mod db;
@@ -10,6 +10,8 @@ mod store;
 mod token;
 mod types;
 mod user;
+
+const HEADER_AUTH: &str = "x-auth-token";
 
 // Reset the DB, only available in debug compilation
 fn nuke() -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
@@ -23,7 +25,7 @@ fn nuke() -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
 }
 
 fn main() {
-    // GET /nuke
+    // POST /nuke
     let nuke = warp::path("nuke").and_then(|| nuke());
 
     // POST /user
@@ -42,7 +44,7 @@ fn main() {
 
     // POST /logout
     let logout = warp::path("logout")
-        .and(warp::header::<String>("session_token"))
+        .and(warp::header::<String>(HEADER_AUTH))
         .and_then(|auth| {
             session::logout(auth)
                 .and_then(|()| Ok(warp::reply()))
@@ -51,7 +53,7 @@ fn main() {
 
     // DELETE /user
     let delete_user = warp::path("user")
-        .and(warp::header::<String>("session_token"))
+        .and(warp::header::<String>(HEADER_AUTH))
         .and_then(|auth| {
             user::delete_user(auth)
                 .and_then(|()| Ok(warp::reply()))
@@ -60,11 +62,21 @@ fn main() {
 
     // POST /store
     let create_store = warp::path("store")
+        .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and(warp::header::<String>("session_token"))
-        .and_then(|obj, auth| {
+        .and_then(|auth, obj| {
             store::create_store(auth, obj)
                 .and_then(|store_id| Ok(warp::reply::json(&store_id)))
+                .or_else(|e| Err(warp::reject::custom(e.compat())))
+        });
+
+    // PUT /store/{id}
+    let edit_store = path!("store" / u32)
+        .and(warp::header::<String>(HEADER_AUTH))
+        .and(warp::body::json())
+        .and_then(|id, auth, obj| {
+            store::edit_store(auth, id, obj)
+                .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
 
@@ -73,12 +85,15 @@ fn main() {
         .or(login)
         .or(logout)
         .or(create_store)
+        .or(nuke)
         .recover(customize_error);
-    let get_routes = warp::get2().and(nuke);
-    let del_routes = warp::delete2().and(delete_user);
+
+    let put_routes = warp::put2().and(edit_store).recover(customize_error);
+
+    let del_routes = warp::delete2().and(delete_user).recover(customize_error);
 
     println!("Efficio's ready for requests...");
-    warp::serve(post_routes.or(get_routes).or(del_routes)).run(([127, 0, 0, 1], 3030));
+    warp::serve(put_routes.or(post_routes).or(del_routes)).run(([127, 0, 0, 1], 3030));
 }
 
 fn customize_error(err: Rejection) -> Result<impl Reply, Rejection> {
