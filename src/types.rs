@@ -14,6 +14,4 @@ pub struct StoreId {
 }
 
 #[derive(Serialize, Debug, Deref, new)]
-pub struct SectionId {
-  section_id: u32,
-}
+pub struct AisleId(pub u32);

@@ -1,12 +1,14 @@
+use std::error::Error;
+use std::fmt::Display;
+
 use failure::Fail;
 use redis::RedisError;
 use serde::Serialize;
-use std::error::Error;
-use std::fmt::Display;
 
 pub const USERNAME_TAKEN: i32 = 100;
 pub const INVALID_USER_OR_PWD: i32 = 150;
 pub const UNAUTHORISED: i32 = 400;
+pub const PERMISSION_DENIED: i32 = 401;
 pub const INVALID_PARAMS: i32 = 2;
 pub const INTERNAL_ERROR: i32 = 500;
 

@@ -1,5 +1,4 @@
 use redis::{Commands, PipelineCommands};
-use std::string::ToString;
 
 use crate::db::{get_connection, sessions};
 use crate::error::*;
@@ -10,11 +9,11 @@ const STORE_NAME: &str = "name";
 const STORE_OWNER: &str = "owner_id";
 
 fn store_key(id: &StoreId) -> String {
-  format!("store:{}", id.to_string())
+  format!("store:{}", **id)
 }
 
 fn user_stores_list_key(user_id: &UserId) -> String {
-  format!("stores:{}", user_id.to_string())
+  format!("stores:{}", **user_id)
 }
 
 pub fn save_store(auth: &Auth, name: &str) -> Result<StoreId> {
@@ -32,6 +31,7 @@ pub fn save_store(auth: &Auth, name: &str) -> Result<StoreId> {
       .sadd(&user_stores_key, *store_id)
       .query(&c)
   })?;
+
   Ok(store_id)
 }
 

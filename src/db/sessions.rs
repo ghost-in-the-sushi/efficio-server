@@ -8,7 +8,7 @@ use crate::types::*;
 const SESSIONS_LIST: &str = "sessions";
 
 fn user_sessions_key(user_id: &UserId) -> String {
-  format!("sessions:{}", user_id.to_string())
+  format!("sessions:{}", **user_id)
 }
 
 pub fn get_user_id(c: &redis::Connection, auth: &Auth) -> Result<UserId> {
@@ -122,7 +122,7 @@ pub mod tests {
     assert_eq!(false, validate_session(&Auth("notpresentauth")).is_ok());
     let c = get_connection().unwrap();
     // tamper user sessions list
-    let _: i32 = c.srem(&user_sessions_key(&UserId(1)), auth.0).unwrap();
+    let _: i32 = c.srem(&user_sessions_key(&UserId(1)), AUTH.0).unwrap();
     assert_eq!(false, validate_session(&AUTH).is_ok());
   }
 
@@ -145,7 +145,7 @@ pub mod tests {
     let new_auth: String = c.hget("user:1", "auth").unwrap();
     // check that we change the auth token on logout
     assert_ne!(user_auth, new_auth);
-    let res: bool = c.hexists(SESSIONS_LIST, auth.0).unwrap();
+    let res: bool = c.hexists(SESSIONS_LIST, AUTH.0).unwrap();
     assert_eq!(false, res);
   }
 

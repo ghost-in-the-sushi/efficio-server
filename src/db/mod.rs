@@ -1,6 +1,7 @@
 use lazy_static::lazy_static;
 use redis::{self, Client, Connection};
 
+pub mod aisles;
 pub mod sessions;
 pub mod stores;
 pub mod users;
