@@ -1,6 +1,7 @@
 use failure::{self, Fail};
 use warp::{self, http::StatusCode, path, Filter, Rejection, Reply};
 
+mod aisle;
 mod consts;
 mod db;
 mod error;
@@ -80,11 +81,39 @@ fn main() {
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
 
+    // POST /aisle
+    let create_aisle = path!("store" / u32 / "aisle")
+        .and(warp::header::<String>(HEADER_AUTH))
+        .and(warp::body::json())
+        .and_then(|store_id, auth, obj| {
+            aisle::create_aisle(auth, store_id, obj)
+                .and_then(|aisle| Ok(warp::reply::json(&aisle)))
+                .or_else(|e| Err(warp::reject::custom(e.compat())))
+        });
+
+    let edit_aisle = path!("aisle" / u32)
+        .and(warp::header::<String>(HEADER_AUTH))
+        .and(warp::body::json())
+        .and_then(|aisle_id, auth, obj| {
+            aisle::rename_aisle(auth, aisle_id, obj)
+                .and_then(|()| Ok(warp::reply()))
+                .or_else(|e| Err(warp::reject::custom(e.compat())))
+        });
+
     let post_routes = warp::post2()
-        .and(create_user.or(login).or(logout).or(create_store).or(nuke))
+        .and(
+            create_user
+                .or(login)
+                .or(logout)
+                .or(create_aisle)
+                .or(create_store)
+                .or(nuke),
+        )
         .recover(customize_error);
 
-    let put_routes = warp::put2().and(edit_store).recover(customize_error);
+    let put_routes = warp::put2()
+        .and(edit_store.or(edit_aisle))
+        .recover(customize_error);
 
     let del_routes = warp::delete2().and(delete_user).recover(customize_error);
 

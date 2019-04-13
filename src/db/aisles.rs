@@ -1,5 +1,6 @@
 use derive_new::new;
 use redis::{self, Commands, PipelineCommands};
+use serde::Serialize;
 
 use crate::db::{self, get_connection};
 use crate::error::{self, *};
@@ -11,7 +12,7 @@ const AISLE_WEIGHT: &str = "sort_weight";
 const AISLE_OWNER: &str = "owner_id";
 const AISLE_STORE: &str = "store_id";
 
-#[derive(new)]
+#[derive(new, Serialize)]
 pub struct Aisle {
   aisle_id: u32,
   name: String,
@@ -55,7 +56,7 @@ pub fn edit_aisle(auth: &Auth, aisle_id: &AisleId, new_name: &str) -> Result<()>
   let wanted_user_id = db::sessions::get_user_id(&c, &auth)?;
   let aisle_key = aisle_key(&aisle_id);
   let aisle_owner: u32 = c.hget(&aisle_key, AISLE_OWNER)?;
-  if (aisle_owner != *wanted_user_id) {
+  if aisle_owner != *wanted_user_id {
     Err(ServerError::new(
       error::PERMISSION_DENIED,
       "User does not have permission to edit this resource",
@@ -89,7 +90,7 @@ mod tests {
     let name: String = c.hget(&key, AISLE_NAME).unwrap();
     assert_eq!(NAME, name.as_str());
     let weight: f32 = c.hget(&key, AISLE_WEIGHT).unwrap();
-    assert_eq!(0.0f32, weight);
+    assert!(weight - 0.0f32 < std::f32::EPSILON);
     let aisle_store: u32 = c.hget(&key, AISLE_STORE).unwrap();
     assert_eq!(1, aisle_store);
     let res: bool = c.sismember(&aisles_in_store(&store_id), 1).unwrap();
