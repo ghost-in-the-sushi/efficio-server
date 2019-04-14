@@ -27,7 +27,7 @@ fn hash(data: &str, salt: &str) -> String {
 }
 
 fn user_key(user_id: &UserId) -> String {
-  format!("user:{}", user_id.to_string())
+  format!("user:{}", **user_id)
 }
 
 fn gen_auth(rng: &mut rand::rngs::ThreadRng) -> String {

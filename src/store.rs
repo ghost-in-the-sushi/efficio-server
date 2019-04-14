@@ -13,7 +13,8 @@ pub fn create_store(auth: String, obj: HashMap<String, String>) -> Result<StoreI
 }
 
 pub fn edit_store(auth: String, id: u32, obj: HashMap<String, String>) -> Result<()> {
-  db::sessions::validate_session(&Auth(&auth))?;
+  let auth = Auth(&auth);
+  db::sessions::validate_session(&auth)?;
   let name = helpers::extract_value(&obj, "name", "Missing name")?;
-  db::stores::edit_store(&StoreId::new(id), &name)
+  db::stores::edit_store(&auth, &StoreId::new(id), &name)
 }

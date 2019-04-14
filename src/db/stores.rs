@@ -1,6 +1,6 @@
 use redis::{Commands, PipelineCommands};
 
-use crate::db::{get_connection, sessions};
+use crate::db::{self, get_connection};
 use crate::error::*;
 use crate::types::*;
 
@@ -16,10 +16,14 @@ fn user_stores_list_key(user_id: &UserId) -> String {
   format!("stores:{}", **user_id)
 }
 
+pub fn get_store_owner(c: &redis::Connection, store_id: &StoreId) -> Result<UserId> {
+  Ok(UserId(c.hget(&store_key(&store_id), STORE_OWNER)?))
+}
+
 pub fn save_store(auth: &Auth, name: &str) -> Result<StoreId> {
   let c = get_connection()?;
   let store_id = StoreId::new(c.incr(NEXT_STORE_ID, 1)?);
-  let user_id = sessions::get_user_id(&c, &auth)?;
+  let user_id = db::sessions::get_user_id(&c, &auth)?;
   let store_key = store_key(&store_id);
   let user_stores_key = user_stores_list_key(&user_id);
   redis::transaction(&c, &[&store_key, &user_stores_key], |pipe| {
@@ -35,16 +39,18 @@ pub fn save_store(auth: &Auth, name: &str) -> Result<StoreId> {
   Ok(store_id)
 }
 
-pub fn edit_store(id: &StoreId, new_name: &str) -> Result<()> {
+pub fn edit_store(auth: &Auth, id: &StoreId, new_name: &str) -> Result<()> {
   let c = get_connection()?;
+  let owner_id = get_store_owner(&c, &id)?;
+  db::verify_permission_auth(&c, &auth, &owner_id)?;
   Ok(c.hset(&store_key(&id), STORE_NAME, new_name)?)
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::db::users::tests::*;
-  use sessions::tests::*;
+  use db::sessions::tests::*;
+  use db::users::tests::*;
 
   const STORE_TEST_NAME: &str = "storetest";
   const NEW_STORE_NAME: &str = "new_store_name";
@@ -72,7 +78,7 @@ mod tests {
   #[test]
   fn edit_store_test() {
     save_store_test();
-    edit_store(&StoreId::new(1), NEW_STORE_NAME).unwrap();
+    edit_store(&AUTH, &StoreId::new(1), NEW_STORE_NAME).unwrap();
     let c = get_connection().unwrap();
     let store_key = store_key(&StoreId::new(1));
     let store_name: String = c.hget(&store_key, STORE_NAME).unwrap();

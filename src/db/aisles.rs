@@ -1,9 +1,9 @@
-use derive_new::new;
+use derive_more::Constructor;
 use redis::{self, Commands, PipelineCommands};
 use serde::Serialize;
 
 use crate::db::{self, get_connection};
-use crate::error::{self, *};
+use crate::error::*;
 use crate::types::*;
 
 const NEXT_AISLE_ID: &str = "next_aisle_id";
@@ -12,7 +12,7 @@ const AISLE_WEIGHT: &str = "sort_weight";
 const AISLE_OWNER: &str = "owner_id";
 const AISLE_STORE: &str = "store_id";
 
-#[derive(new, Serialize)]
+#[derive(Constructor, Serialize)]
 pub struct Aisle {
   aisle_id: u32,
   name: String,
@@ -24,16 +24,22 @@ fn aisle_key(id: &AisleId) -> String {
   format!("aisle:{}", **id)
 }
 
-fn aisles_in_store(id: &StoreId) -> String {
+fn aisles_in_store_key(id: &StoreId) -> String {
   format!("aisles_in_store:{}", **id)
+}
+
+pub fn get_aisle_owner(c: &redis::Connection, aisle_id: &AisleId) -> Result<UserId> {
+  Ok(UserId(c.hget(&aisle_key(&aisle_id), AISLE_OWNER)?))
 }
 
 pub fn save_aisle(auth: &Auth, store_id: &StoreId, name: &str) -> Result<Aisle> {
   let c = get_connection()?;
   let aisle_id = AisleId(c.incr(NEXT_AISLE_ID, 1)?);
   let aisle_key = aisle_key(&aisle_id);
-  let aisle_in_store_key = aisles_in_store(&store_id);
+  let aisle_in_store_key = aisles_in_store_key(&store_id);
   let user_id = db::sessions::get_user_id(&c, &auth)?;
+  let store_owner = db::stores::get_store_owner(&c, &store_id)?;
+  db::verify_permission(&user_id, &store_owner)?;
   redis::transaction(&c, &[&aisle_key, &aisle_in_store_key], |pipe| {
     pipe
       .hset(&aisle_key, AISLE_NAME, name)
@@ -44,7 +50,7 @@ pub fn save_aisle(auth: &Auth, store_id: &StoreId, name: &str) -> Result<Aisle> 
       .ignore()
       .hset(&aisle_key, AISLE_STORE, **store_id)
       .ignore()
-      .sadd(&aisle_in_store_key, **store_id)
+      .sadd(&aisle_in_store_key, *aisle_id)
       .query(&c)
   })?;
 
@@ -53,27 +59,19 @@ pub fn save_aisle(auth: &Auth, store_id: &StoreId, name: &str) -> Result<Aisle> 
 
 pub fn edit_aisle(auth: &Auth, aisle_id: &AisleId, new_name: &str) -> Result<()> {
   let c = get_connection()?;
-  let wanted_user_id = db::sessions::get_user_id(&c, &auth)?;
   let aisle_key = aisle_key(&aisle_id);
-  let aisle_owner: u32 = c.hget(&aisle_key, AISLE_OWNER)?;
-  if aisle_owner != *wanted_user_id {
-    Err(ServerError::new(
-      error::PERMISSION_DENIED,
-      "User does not have permission to edit this resource",
-    ))
-  } else {
-    Ok(c.hset(&aisle_key, AISLE_NAME, new_name)?)
-  }
+  let aisle_owner = get_aisle_owner(&c, &aisle_id)?;
+  db::verify_permission_auth(&c, &auth, &aisle_owner)?;
+  Ok(c.hset(&aisle_key, AISLE_NAME, new_name)?)
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
   use super::*;
   use crate::db::stores::*;
-  use crate::db::tests::*;
   use crate::db::{sessions::tests::*, users::tests::*};
 
-  const NAME: &str = "Aisle1";
+  pub const NAME: &str = "Aisle1";
   const RENAMED: &str = "AisleRenamed";
 
   fn save_aisle_test() {
@@ -85,7 +83,7 @@ mod tests {
     let key = aisle_key(&AisleId(1));
     let res: bool = c.exists(&key).unwrap();
     assert_eq!(true, res);
-    let res: bool = c.exists(&aisles_in_store(&store_id)).unwrap();
+    let res: bool = c.exists(&aisles_in_store_key(&store_id)).unwrap();
     assert_eq!(true, res);
     let name: String = c.hget(&key, AISLE_NAME).unwrap();
     assert_eq!(NAME, name.as_str());
@@ -93,7 +91,7 @@ mod tests {
     assert!(weight - 0.0f32 < std::f32::EPSILON);
     let aisle_store: u32 = c.hget(&key, AISLE_STORE).unwrap();
     assert_eq!(1, aisle_store);
-    let res: bool = c.sismember(&aisles_in_store(&store_id), 1).unwrap();
+    let res: bool = c.sismember(&aisles_in_store_key(&store_id), 1).unwrap();
     assert_eq!(true, res);
   }
 
