@@ -32,5 +32,13 @@ pub fn edit_product(auth: String, product_id: u32, obj: HashMap<String, String>)
     }),
     obj.get("is_done").and_then(|s| bool::from_str(s).ok()),
   );
-  db::products::modify_product(&auth, &data, &ProductId(product_id))
+
+  if !data.has_at_last_a_field() {
+    Err(ServerError::new(
+      INVALID_PARAMS,
+      "At least a field must be present",
+    ))
+  } else {
+    db::products::modify_product(&auth, &data, &ProductId(product_id))
+  }
 }

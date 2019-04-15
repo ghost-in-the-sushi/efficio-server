@@ -55,6 +55,12 @@ pub struct EditProduct<'a> {
   is_done: Option<bool>,
 }
 
+impl<'a> EditProduct<'a> {
+  pub fn has_at_last_a_field(&self) -> bool {
+    self.name.is_none() && self.quantity.is_none() && self.unit.is_none() && self.is_done.is_none()
+  }
+}
+
 const NEXT_PROD_ID: &str = "next_product_id";
 const PROD_NAME: &str = "name";
 const PROD_SORT_WEIGHT: &str = "sort_weight";
