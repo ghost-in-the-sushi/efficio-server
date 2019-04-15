@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use derive_more::Constructor;
 use redis::{self, Commands, PipelineCommands};
 use serde::Serialize;
@@ -5,21 +7,61 @@ use serde::Serialize;
 use crate::db;
 use crate::error::*;
 use crate::types::*;
+
+#[derive(Serialize, Debug, Clone, PartialEq)]
+pub enum Unit {
+  Unit,
+  Gram,
+  Ml,
+}
+
+impl std::convert::From<Unit> for u32 {
+  fn from(o: Unit) -> u32 {
+    match o {
+      Unit::Unit => 0,
+      Unit::Gram => 1,
+      Unit::Ml => 2,
+    }
+  }
+}
+
+impl std::convert::From<u32> for Unit {
+  fn from(o: u32) -> Self {
+    if o == 1 {
+      Unit::Gram
+    } else if o == 2 {
+      Unit::Ml
+    } else {
+      Unit::Unit
+    }
+  }
+}
+
 #[derive(Serialize, Constructor)]
 pub struct Product {
   product_id: u32,
   name: String,
   quantity: u32,
   is_done: bool,
+  unit: Unit,
   sort_weight: f32,
+}
+
+#[derive(Constructor)]
+pub struct EditProduct<'a> {
+  name: Option<&'a str>,
+  quantity: Option<u32>,
+  unit: Option<Unit>,
+  is_done: Option<bool>,
 }
 
 const NEXT_PROD_ID: &str = "next_product_id";
 const PROD_NAME: &str = "name";
 const PROD_SORT_WEIGHT: &str = "sort_weight";
-const PROD_STATE: &str = "state";
+const PROD_STATE: &str = "is_done";
 const PROD_OWNER: &str = "product_owner";
 const PROD_QTY: &str = "quantity";
+const PROD_UNIT: &str = "unit";
 
 fn product_key(id: &ProductId) -> String {
   format!("product:{}", **id)
@@ -53,17 +95,39 @@ pub fn save_product(auth: &Auth, name: &str, aisle_id: &AisleId) -> Result<Produ
       .ignore()
       .hset(&prod_key, PROD_OWNER, *user_id)
       .ignore()
+      .hset(&prod_key, PROD_UNIT, u32::from(Unit::Unit))
+      .ignore()
       .sadd(&prod_in_aisle_key, *prod_id)
       .query(&c)
   })?;
-  Ok(Product::new(*prod_id, name.to_owned(), 1, false, 0.0f32))
+  Ok(Product::new(
+    *prod_id,
+    name.to_owned(),
+    1,
+    false,
+    Unit::Unit,
+    0.0f32,
+  ))
 }
 
-pub fn rename_product(auth: &Auth, new_name: &str, product_id: &ProductId) -> Result<()> {
+pub fn modify_product(auth: &Auth, edit_data: &EditProduct, product_id: &ProductId) -> Result<()> {
   let c = db::get_connection()?;
   let product_owner = get_product_owner(&c, &product_id)?;
   db::verify_permission_auth(&c, &auth, &product_owner)?;
-  Ok(c.hset(&product_key(&product_id), PROD_NAME, new_name)?)
+  let product_key = product_key(&product_id);
+  if let Some(new_name) = edit_data.name {
+    c.hset(&product_key, PROD_NAME, new_name)?;
+  }
+  if let Some(qty) = edit_data.quantity {
+    c.hset(&product_key, PROD_QTY, qty)?;
+  }
+  if let Some(is_done) = edit_data.is_done {
+    c.hset(&product_key, PROD_STATE, is_done)?;
+  }
+  if let Some(unit) = &edit_data.unit {
+    c.hset(&product_key, PROD_UNIT, u32::from(unit.clone()))?;
+  }
+  Ok(())
 }
 
 #[cfg(test)]
@@ -89,8 +153,9 @@ mod tests {
     assert_eq!(1, qty);
     let sort: f32 = c.hget(&prod_key, PROD_SORT_WEIGHT).unwrap();
     assert!(sort - 0f32 < std::f32::EPSILON);
-    let is_done: bool = c.hget(&prod_key, PROD_STATE).unwrap();
-    assert_ne!(false, is_done);
+    let is_done: String = c.hget(&prod_key, PROD_STATE).unwrap();
+    let is_done: bool = bool::from_str(&is_done).unwrap();
+    assert_eq!(false, is_done);
     let owner: u32 = c.hget(&prod_key, PROD_OWNER).unwrap();
     assert_eq!(1, owner);
     let res: bool = c.sismember(&products_in_aisle_key(&AisleId(1)), 1).unwrap();
@@ -98,11 +163,21 @@ mod tests {
   }
 
   #[test]
-  fn rename_product_test() {
+  fn modify_product_test() {
     save_product_test();
-    assert_eq!(true, rename_product(&AUTH, RENAME, &ProductId(1)).is_ok());
+    let data = EditProduct::new(Some(RENAME), Some(2), None, Some(true));
+    assert_eq!(true, modify_product(&AUTH, &data, &ProductId(1)).is_ok());
     let c = db::get_connection().unwrap();
-    let name: String = c.hget(&product_key(&ProductId(1)), PROD_NAME).unwrap();
+    let product_key = product_key(&ProductId(1));
+    let name: String = c.hget(&product_key, PROD_NAME).unwrap();
     assert_eq!(RENAME, &name);
+    let qty: u32 = c.hget(&product_key, PROD_QTY).unwrap();
+    assert_eq!(2, qty);
+    let unit: u32 = c.hget(&product_key, PROD_UNIT).unwrap();
+    let unit = Unit::from(unit);
+    assert_eq!(Unit::Unit, unit);
+    let state: String = c.hget(&product_key, PROD_STATE).unwrap();
+    let state: bool = bool::from_str(&state).unwrap();
+    assert_eq!(true, state);
   }
 }

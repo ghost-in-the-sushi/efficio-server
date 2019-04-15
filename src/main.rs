@@ -127,13 +127,13 @@ fn main() {
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
 
-    // PUT /aisle/<id>
+    // PUT /product/<id>
     let rename_product = path!("product" / u32)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
         .and_then(|product_id, auth, obj| {
-            product::rename_product(auth, product_id, obj)
+            product::edit_product(auth, product_id, obj)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });

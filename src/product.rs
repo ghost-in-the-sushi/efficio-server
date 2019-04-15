@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use crate::db;
 use crate::error::*;
@@ -16,9 +17,20 @@ pub fn create_product(
   db::products::save_product(&auth, &name, &AisleId(aisle_id))
 }
 
-pub fn rename_product(auth: String, product_id: u32, obj: HashMap<String, String>) -> Result<()> {
+pub fn edit_product(auth: String, product_id: u32, obj: HashMap<String, String>) -> Result<()> {
   let auth = Auth(&auth);
   db::sessions::validate_session(&auth)?;
-  let name = extract_value(&obj, "name", "Missing `name` field.")?;
-  db::products::rename_product(&auth, &name, &ProductId(product_id))
+  let data = db::products::EditProduct::new(
+    obj.get("name").and_then(|s| Some(s.as_str())),
+    obj.get("quantity").and_then(|s| s.parse::<u32>().ok()),
+    obj.get("unit").and_then(|s| {
+      if let Some(u) = s.parse::<u32>().ok() {
+        Some(db::products::Unit::from(u))
+      } else {
+        None
+      }
+    }),
+    obj.get("is_done").and_then(|s| bool::from_str(s).ok()),
+  );
+  db::products::modify_product(&auth, &data, &ProductId(product_id))
 }
