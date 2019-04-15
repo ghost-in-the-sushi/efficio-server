@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::convert::From;
 
 use derive_more::Constructor;
 use redis::{self, Commands, PipelineCommands};
@@ -15,7 +15,7 @@ pub enum Unit {
   Ml,
 }
 
-impl std::convert::From<Unit> for u32 {
+impl From<Unit> for u32 {
   fn from(o: Unit) -> u32 {
     match o {
       Unit::Unit => 0,
@@ -25,7 +25,7 @@ impl std::convert::From<Unit> for u32 {
   }
 }
 
-impl std::convert::From<u32> for Unit {
+impl From<u32> for Unit {
   fn from(o: u32) -> Self {
     if o == 1 {
       Unit::Gram
@@ -91,7 +91,7 @@ pub fn save_product(auth: &Auth, name: &str, aisle_id: &AisleId) -> Result<Produ
       .ignore()
       .hset(&prod_key, PROD_SORT_WEIGHT, 0f32)
       .ignore()
-      .hset(&prod_key, PROD_STATE, false)
+      .hset(&prod_key, PROD_STATE, false as i32)
       .ignore()
       .hset(&prod_key, PROD_OWNER, *user_id)
       .ignore()
@@ -122,7 +122,7 @@ pub fn modify_product(auth: &Auth, edit_data: &EditProduct, product_id: &Product
     c.hset(&product_key, PROD_QTY, qty)?;
   }
   if let Some(is_done) = edit_data.is_done {
-    c.hset(&product_key, PROD_STATE, is_done)?;
+    c.hset(&product_key, PROD_STATE, is_done as i32)?;
   }
   if let Some(unit) = &edit_data.unit {
     c.hset(&product_key, PROD_UNIT, u32::from(unit.clone()))?;
@@ -153,9 +153,8 @@ mod tests {
     assert_eq!(1, qty);
     let sort: f32 = c.hget(&prod_key, PROD_SORT_WEIGHT).unwrap();
     assert!(sort - 0f32 < std::f32::EPSILON);
-    let is_done: String = c.hget(&prod_key, PROD_STATE).unwrap();
-    let is_done: bool = bool::from_str(&is_done).unwrap();
-    assert_eq!(false, is_done);
+    let is_done: i32 = c.hget(&prod_key, PROD_STATE).unwrap();
+    assert_eq!(false, is_done != 0);
     let owner: u32 = c.hget(&prod_key, PROD_OWNER).unwrap();
     assert_eq!(1, owner);
     let res: bool = c.sismember(&products_in_aisle_key(&AisleId(1)), 1).unwrap();
@@ -176,8 +175,7 @@ mod tests {
     let unit: u32 = c.hget(&product_key, PROD_UNIT).unwrap();
     let unit = Unit::from(unit);
     assert_eq!(Unit::Unit, unit);
-    let state: String = c.hget(&product_key, PROD_STATE).unwrap();
-    let state: bool = bool::from_str(&state).unwrap();
-    assert_eq!(true, state);
+    let state: i32 = c.hget(&product_key, PROD_STATE).unwrap();
+    assert_eq!(true, state != 0);
   }
 }
