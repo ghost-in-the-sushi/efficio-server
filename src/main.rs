@@ -138,6 +138,16 @@ fn main() {
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
 
+    // GET /stores
+    let get_all_stores = warp::path("store")
+        .and(warp::path::end())
+        .and(warp::header::<String>(HEADER_AUTH))
+        .and_then(|auth| {
+            store::list_stores(auth)
+                .and_then(|stores| Ok(warp::reply::json(&stores)))
+                .or_else(|e| Err(warp::reject::custom(e.compat())))
+        });
+
     let post_routes = warp::post2()
         .and(
             create_user
@@ -154,10 +164,13 @@ fn main() {
         .and(edit_store.or(edit_aisle).or(rename_product))
         .recover(customize_error);
 
+    let get_routes = warp::get2().and(get_all_stores).recover(customize_error);
+
     let del_routes = warp::delete2().and(delete_user).recover(customize_error);
 
     println!("Efficio's ready for requests...");
-    warp::serve(post_routes.or(put_routes).or(del_routes)).run(([127, 0, 0, 1], 3030));
+    warp::serve(get_routes.or(post_routes).or(put_routes).or(del_routes))
+        .run(([127, 0, 0, 1], 3030));
 }
 
 fn customize_error(err: Rejection) -> Result<impl Reply, Rejection> {

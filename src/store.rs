@@ -18,3 +18,9 @@ pub fn edit_store(auth: String, id: u32, obj: HashMap<String, String>) -> Result
   let name = helpers::extract_value(&obj, "name", "Missing name")?;
   db::stores::edit_store(&auth, &StoreId::new(id), &name)
 }
+
+pub fn list_stores(auth: String) -> Result<Vec<StoreLight>> {
+  let auth = Auth(&auth);
+  db::sessions::validate_session(&auth)?;
+  db::stores::get_all_stores(&auth)
+}

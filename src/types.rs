@@ -18,3 +18,9 @@ pub struct AisleId(pub u32);
 
 #[derive(Debug, Deref, PartialEq, Eq)]
 pub struct ProductId(pub u32);
+
+#[derive(Debug, Serialize, Constructor, PartialEq, Eq)]
+pub struct StoreLight {
+  name: String,
+  store_id: u32,
+}

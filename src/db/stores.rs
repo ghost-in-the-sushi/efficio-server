@@ -46,6 +46,23 @@ pub fn edit_store(auth: &Auth, id: &StoreId, new_name: &str) -> Result<()> {
   Ok(c.hset(&store_key(&id), STORE_NAME, new_name)?)
 }
 
+pub fn get_all_stores(auth: &Auth) -> Result<Vec<StoreLight>> {
+  let c = db::get_connection()?;
+  let user_id = db::sessions::get_user_id(&c, &auth)?;
+  let all_store_ids: Vec<u32> = c.smembers(&user_stores_list_key(&user_id))?;
+  Ok(
+    all_store_ids
+      .into_iter()
+      .map(|id| {
+        let name: String = c
+          .hget(&store_key(&StoreId::new(id)), STORE_NAME)
+          .expect("Db is corrupted? Should have a store name.");
+        StoreLight::new(name, id)
+      })
+      .collect(),
+  )
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -83,5 +100,20 @@ mod tests {
     let store_key = store_key(&StoreId::new(1));
     let store_name: String = c.hget(&store_key, STORE_NAME).unwrap();
     assert_eq!(NEW_STORE_NAME, &store_name);
+  }
+
+  #[test]
+  fn list_stores_test() {
+    save_store_test();
+    assert_eq!(true, save_store(&AUTH, NEW_STORE_NAME).is_ok());
+    let res_all_stores = get_all_stores(&AUTH);
+    assert_eq!(true, res_all_stores.is_ok());
+    let all_stores = res_all_stores.unwrap();
+    assert_eq!(2, all_stores.len());
+    let expected_stores = vec![
+      StoreLight::new(STORE_TEST_NAME.to_owned(), 1),
+      StoreLight::new(NEW_STORE_NAME.to_owned(), 2),
+    ];
+    assert_eq!(expected_stores, all_stores);
   }
 }
