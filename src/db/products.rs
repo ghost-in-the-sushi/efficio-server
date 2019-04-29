@@ -2,64 +2,10 @@ use std::convert::From;
 
 use derive_more::Constructor;
 use redis::{self, Commands, PipelineCommands};
-use serde::Serialize;
 
 use crate::db;
 use crate::error::*;
 use crate::types::*;
-
-#[derive(Serialize, Debug, Clone, PartialEq)]
-pub enum Unit {
-  Unit,
-  Gram,
-  Ml,
-}
-
-impl From<Unit> for u32 {
-  fn from(o: Unit) -> u32 {
-    match o {
-      Unit::Unit => 0,
-      Unit::Gram => 1,
-      Unit::Ml => 2,
-    }
-  }
-}
-
-impl From<u32> for Unit {
-  fn from(o: u32) -> Self {
-    if o == 1 {
-      Unit::Gram
-    } else if o == 2 {
-      Unit::Ml
-    } else {
-      Unit::Unit
-    }
-  }
-}
-
-#[derive(Serialize, Constructor)]
-pub struct Product {
-  product_id: u32,
-  name: String,
-  quantity: u32,
-  is_done: bool,
-  unit: Unit,
-  sort_weight: f32,
-}
-
-#[derive(Constructor)]
-pub struct EditProduct<'a> {
-  name: Option<&'a str>,
-  quantity: Option<u32>,
-  unit: Option<Unit>,
-  is_done: Option<bool>,
-}
-
-impl<'a> EditProduct<'a> {
-  pub fn has_at_last_a_field(&self) -> bool {
-    self.name.is_none() && self.quantity.is_none() && self.unit.is_none() && self.is_done.is_none()
-  }
-}
 
 const NEXT_PROD_ID: &str = "next_product_id";
 const PROD_NAME: &str = "name";
@@ -68,120 +14,242 @@ const PROD_STATE: &str = "is_done";
 const PROD_OWNER: &str = "product_owner";
 const PROD_QTY: &str = "quantity";
 const PROD_UNIT: &str = "unit";
+const PROD_AISLE: &str = "aisle";
 
-fn product_key(id: &ProductId) -> String {
-  format!("product:{}", **id)
+#[derive(Constructor)]
+pub struct EditProduct<'a> {
+    name: Option<&'a str>,
+    quantity: Option<u32>,
+    unit: Option<Unit>,
+    is_done: Option<bool>,
 }
 
-fn products_in_aisle_key(id: &AisleId) -> String {
-  format!("products_in_aisle:{}", **id)
+impl<'a> EditProduct<'a> {
+    pub fn has_at_last_a_field(&self) -> bool {
+        self.name.is_none()
+            && self.quantity.is_none()
+            && self.unit.is_none()
+            && self.is_done.is_none()
+    }
+}
+
+pub fn product_key(id: &ProductId) -> String {
+    format!("product:{}", **id)
+}
+
+pub fn products_in_aisle_key(id: &AisleId) -> String {
+    format!("products_in_aisle:{}", **id)
 }
 
 fn get_product_owner(c: &redis::Connection, id: &ProductId) -> Result<UserId> {
-  Ok(UserId(c.hget(&product_key(&id), PROD_OWNER)?))
+    Ok(UserId(c.hget(&product_key(&id), PROD_OWNER)?))
+}
+
+pub fn get_products_in_aisle(c: &redis::Connection, aisle_id: &AisleId) -> Result<Vec<Product>> {
+    let products: Vec<u32> = c.smembers(&products_in_aisle_key(&aisle_id))?;
+    products
+        .into_iter()
+        .map(|p| {
+            let product_key = product_key(&ProductId(p));
+            let unit: u32 = c.hget(&product_key, PROD_UNIT)?;
+            let state: i32 = c.hget(&product_key, PROD_STATE)?;
+            let state = state != 0;
+            Ok(Product::new(
+                p,
+                c.hget(&product_key, PROD_NAME)?,
+                c.hget(&product_key, PROD_QTY)?,
+                state,
+                Unit::from(unit),
+                c.hget(&product_key, PROD_SORT_WEIGHT)?,
+            ))
+        })
+        .collect()
 }
 
 pub fn save_product(auth: &Auth, name: &str, aisle_id: &AisleId) -> Result<Product> {
-  let c = db::get_connection()?;
-  let aisle_owner = db::aisles::get_aisle_owner(&c, &aisle_id)?;
-  let user_id = db::sessions::get_user_id(&c, &auth)?;
-  db::verify_permission(&user_id, &aisle_owner)?;
-  let prod_id = ProductId(c.incr(NEXT_PROD_ID, 1)?);
-  let prod_key = product_key(&prod_id);
-  let prod_in_aisle_key = products_in_aisle_key(&aisle_id);
-  redis::transaction(&c, &[&prod_key, &prod_in_aisle_key], |pipe| {
-    pipe
-      .hset(&prod_key, PROD_NAME, name)
-      .ignore()
-      .hset(&prod_key, PROD_QTY, 1)
-      .ignore()
-      .hset(&prod_key, PROD_SORT_WEIGHT, 0f32)
-      .ignore()
-      .hset(&prod_key, PROD_STATE, false as i32)
-      .ignore()
-      .hset(&prod_key, PROD_OWNER, *user_id)
-      .ignore()
-      .hset(&prod_key, PROD_UNIT, u32::from(Unit::Unit))
-      .ignore()
-      .sadd(&prod_in_aisle_key, *prod_id)
-      .query(&c)
-  })?;
-  Ok(Product::new(
-    *prod_id,
-    name.to_owned(),
-    1,
-    false,
-    Unit::Unit,
-    0.0f32,
-  ))
+    let c = db::get_connection()?;
+    let aisle_owner = db::aisles::get_aisle_owner(&c, &aisle_id)?;
+    let user_id = db::sessions::get_user_id(&c, &auth)?;
+    db::verify_permission(&user_id, &aisle_owner)?;
+    let prod_id = ProductId(c.incr(NEXT_PROD_ID, 1)?);
+    let prod_key = product_key(&prod_id);
+    let prod_in_aisle_key = products_in_aisle_key(&aisle_id);
+    redis::transaction(&c, &[&prod_key, &prod_in_aisle_key], |pipe| {
+        pipe.hset(&prod_key, PROD_NAME, name)
+            .ignore()
+            .hset(&prod_key, PROD_QTY, 1)
+            .ignore()
+            .hset(&prod_key, PROD_SORT_WEIGHT, 0f32)
+            .ignore()
+            .hset(&prod_key, PROD_STATE, false as i32)
+            .ignore()
+            .hset(&prod_key, PROD_OWNER, *user_id)
+            .ignore()
+            .hset(&prod_key, PROD_UNIT, u32::from(Unit::Unit))
+            .ignore()
+            .hset(&prod_key, PROD_AISLE, **aisle_id)
+            .ignore()
+            .sadd(&prod_in_aisle_key, *prod_id)
+            .query(&c)
+    })?;
+    Ok(Product::new(
+        *prod_id,
+        name.to_owned(),
+        1,
+        false,
+        Unit::Unit,
+        0.0f32,
+    ))
 }
 
 pub fn modify_product(auth: &Auth, edit_data: &EditProduct, product_id: &ProductId) -> Result<()> {
-  let c = db::get_connection()?;
-  let product_owner = get_product_owner(&c, &product_id)?;
-  db::verify_permission_auth(&c, &auth, &product_owner)?;
-  let product_key = product_key(&product_id);
-  if let Some(new_name) = edit_data.name {
-    c.hset(&product_key, PROD_NAME, new_name)?;
-  }
-  if let Some(qty) = edit_data.quantity {
-    c.hset(&product_key, PROD_QTY, qty)?;
-  }
-  if let Some(is_done) = edit_data.is_done {
-    c.hset(&product_key, PROD_STATE, is_done as i32)?;
-  }
-  if let Some(unit) = &edit_data.unit {
-    c.hset(&product_key, PROD_UNIT, u32::from(unit.clone()))?;
-  }
-  Ok(())
+    let c = db::get_connection()?;
+    let product_owner = get_product_owner(&c, &product_id)?;
+    db::verify_permission_auth(&c, &auth, &product_owner)?;
+    let product_key = product_key(&product_id);
+    if let Some(new_name) = edit_data.name {
+        c.hset(&product_key, PROD_NAME, new_name)?;
+    }
+    if let Some(qty) = edit_data.quantity {
+        c.hset(&product_key, PROD_QTY, qty)?;
+    }
+    if let Some(is_done) = edit_data.is_done {
+        c.hset(&product_key, PROD_STATE, is_done as i32)?;
+    }
+    if let Some(unit) = &edit_data.unit {
+        c.hset(&product_key, PROD_UNIT, u32::from(unit.clone()))?;
+    }
+    Ok(())
+}
+
+pub fn delete_product(auth: &Auth, product_id: &ProductId) -> Result<()> {
+    let c = db::get_connection()?;
+    let product_owner = get_product_owner(&c, &product_id)?;
+    db::verify_permission_auth(&c, &auth, &product_owner)?;
+    let product_key = product_key(&product_id);
+    let aisle_id = AisleId(c.hget(&product_key, PROD_AISLE)?);
+    let prod_in_aisle_key = products_in_aisle_key(&aisle_id);
+    redis::transaction(&c, &[&product_key, &prod_in_aisle_key], |pipe| {
+        pipe.srem(&prod_in_aisle_key, **product_id)
+            .ignore()
+            .del(&product_key)
+            .query(&c)
+    })?;
+    Ok(())
+}
+
+// purge all products contained in aisle
+// to be used only in a redis::transaction, doesn't execute the `pipe`
+pub fn transaction_purge_products_in_aisle(
+    c: &redis::Connection,
+    pipe: &mut redis::Pipeline,
+    aisle_id: &AisleId,
+) -> Result<()> {
+    let products_in_aisle_key = products_in_aisle_key(&aisle_id);
+    let products: Vec<u32> = c.smembers(&products_in_aisle_key)?;
+    products.into_iter().for_each(|p| {
+        pipe.del(&product_key(&ProductId(p))).ignore();
+    });
+    pipe.del(&products_in_aisle_key).ignore();
+    Ok(())
 }
 
 #[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::db;
-  use crate::db::sessions::tests::*;
+pub mod tests {
+    use super::*;
+    use crate::db;
+    use crate::db::sessions::tests::*;
 
-  const NAME: &str = "product1";
-  const RENAME: &str = "product2";
+    const NAME: &str = "product1";
+    pub const RENAME: &str = "product2";
 
-  fn save_product_test() {
-    db::users::tests::store_user_for_test_with_reset();
-    db::sessions::tests::store_session_for_test(&AUTH);
-    let store_id = db::stores::save_store(&AUTH, "MyStore").unwrap();
-    db::aisles::save_aisle(&AUTH, &store_id, db::aisles::tests::NAME).unwrap();
-    assert_eq!(true, save_product(&AUTH, NAME, &AisleId(1)).is_ok());
-    let c = db::get_connection().unwrap();
-    let prod_key = product_key(&ProductId(1));
-    let name: String = c.hget(&prod_key, PROD_NAME).unwrap();
-    assert_eq!(NAME, &name);
-    let qty: u32 = c.hget(&prod_key, PROD_QTY).unwrap();
-    assert_eq!(1, qty);
-    let sort: f32 = c.hget(&prod_key, PROD_SORT_WEIGHT).unwrap();
-    assert!(sort - 0f32 < std::f32::EPSILON);
-    let is_done: i32 = c.hget(&prod_key, PROD_STATE).unwrap();
-    assert_eq!(false, is_done != 0);
-    let owner: u32 = c.hget(&prod_key, PROD_OWNER).unwrap();
-    assert_eq!(1, owner);
-    let res: bool = c.sismember(&products_in_aisle_key(&AisleId(1)), 1).unwrap();
-    assert_eq!(true, res);
-  }
+    // create a store, a session with AUTH token, an aisle and put a product in it
+    pub fn save_product_test() {
+        db::users::tests::store_user_for_test_with_reset();
+        db::sessions::tests::store_session_for_test(&AUTH);
+        let store_id = db::stores::save_store(&AUTH, "MyStore").unwrap();
+        db::aisles::save_aisle(&AUTH, &store_id, db::aisles::tests::NAME).unwrap();
+        let expected = Product::new(1, "product1".to_owned(), 1, false, Unit::Unit, 0f32);
+        assert_eq!(Ok(expected), save_product(&AUTH, NAME, &AisleId(1)));
 
-  #[test]
-  fn modify_product_test() {
-    save_product_test();
-    let data = EditProduct::new(Some(RENAME), Some(2), None, Some(true));
-    assert_eq!(true, modify_product(&AUTH, &data, &ProductId(1)).is_ok());
-    let c = db::get_connection().unwrap();
-    let product_key = product_key(&ProductId(1));
-    let name: String = c.hget(&product_key, PROD_NAME).unwrap();
-    assert_eq!(RENAME, &name);
-    let qty: u32 = c.hget(&product_key, PROD_QTY).unwrap();
-    assert_eq!(2, qty);
-    let unit: u32 = c.hget(&product_key, PROD_UNIT).unwrap();
-    let unit = Unit::from(unit);
-    assert_eq!(Unit::Unit, unit);
-    let state: i32 = c.hget(&product_key, PROD_STATE).unwrap();
-    assert_eq!(true, state != 0);
-  }
+        // check DB
+        let c = db::get_connection().unwrap();
+        let prod_key = product_key(&ProductId(1));
+        let name: String = c.hget(&prod_key, PROD_NAME).unwrap();
+        assert_eq!(NAME, &name);
+        let qty: u32 = c.hget(&prod_key, PROD_QTY).unwrap();
+        assert_eq!(1, qty);
+        let sort: f32 = c.hget(&prod_key, PROD_SORT_WEIGHT).unwrap();
+        assert!(sort - 0f32 < std::f32::EPSILON);
+        let is_done: i32 = c.hget(&prod_key, PROD_STATE).unwrap();
+        assert_eq!(false, is_done != 0);
+        let owner: u32 = c.hget(&prod_key, PROD_OWNER).unwrap();
+        assert_eq!(1, owner);
+        let res: bool = c.sismember(&products_in_aisle_key(&AisleId(1)), 1).unwrap();
+        assert_eq!(true, res);
+    }
+
+    fn add_2nd_product() {
+        let expected = Product::new(2, RENAME.to_owned(), 1, false, Unit::Unit, 0f32);
+        assert_eq!(Ok(expected), save_product(&AUTH, RENAME, &AisleId(1)));
+    }
+
+    #[test]
+    fn modify_product_test() {
+        save_product_test();
+        let data = EditProduct::new(Some(RENAME), Some(2), None, Some(true));
+        assert_eq!(Ok(()), modify_product(&AUTH, &data, &ProductId(1)));
+
+        // check DB
+        let c = db::get_connection().unwrap();
+        let product_key = product_key(&ProductId(1));
+        let name: String = c.hget(&product_key, PROD_NAME).unwrap();
+        assert_eq!(RENAME, &name);
+        let qty: u32 = c.hget(&product_key, PROD_QTY).unwrap();
+        assert_eq!(2, qty);
+        let unit: u32 = c.hget(&product_key, PROD_UNIT).unwrap();
+        let unit = Unit::from(unit);
+        assert_eq!(Unit::Unit, unit);
+        let state: i32 = c.hget(&product_key, PROD_STATE).unwrap();
+        assert_eq!(true, state != 0);
+    }
+
+    #[test]
+    fn get_products_in_aisle_test() {
+        save_product_test();
+        add_2nd_product();
+        let c = db::get_connection().unwrap();
+        let res = get_products_in_aisle(&c, &AisleId(1));
+        let expected = vec![
+            Product::new(1, NAME.to_owned(), 1, false, Unit::Unit, 0f32),
+            Product::new(2, RENAME.to_owned(), 1, false, Unit::Unit, 0f32),
+        ];
+        assert_eq!(Ok(expected), res);
+    }
+
+    #[test]
+    fn delete_product_test() {
+        save_product_test();
+        assert_eq!(Ok(()), delete_product(&AUTH, &ProductId(1)));
+        let c = db::get_connection().unwrap();
+        assert_eq!(Ok(false), c.exists(&product_key(&ProductId(1))));
+    }
+
+    #[test]
+    fn transaction_purge_products_in_aisle_test() {
+        save_product_test();
+        add_2nd_product();
+        let c = db::get_connection().unwrap();
+        let mut pipe = redis::pipe();
+        pipe.atomic();
+        let aisle_id = AisleId(1);
+        assert_eq!(
+            Ok(()),
+            transaction_purge_products_in_aisle(&c, &mut pipe, &aisle_id)
+        );
+        assert_eq!(Ok(()), pipe.query(&c));
+        assert_eq!(Ok(false), c.exists(&product_key(&ProductId(1))));
+        assert_eq!(Ok(false), c.exists(&product_key(&ProductId(2))));
+        assert_eq!(Ok(false), c.exists(&products_in_aisle_key(&aisle_id)));
+    }
 }

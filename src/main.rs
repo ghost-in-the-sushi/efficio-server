@@ -138,13 +138,53 @@ fn main() {
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
 
-    // GET /stores
+    // GET /store
     let get_all_stores = warp::path("store")
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and_then(|auth| {
             store::list_stores(auth)
                 .and_then(|stores| Ok(warp::reply::json(&stores)))
+                .or_else(|e| Err(warp::reject::custom(e.compat())))
+        });
+
+    // GET /store/<id>
+    let list_store = path!("store" / u32)
+        .and(warp::path::end())
+        .and(warp::header::<String>(HEADER_AUTH))
+        .and_then(|store_id, auth| {
+            store::list_store(auth, store_id)
+                .and_then(|store| Ok(warp::reply::json(&store)))
+                .or_else(|e| Err(warp::reject::custom(e.compat())))
+        });
+
+    // DELETE /product/<id>
+    let delete_product = path!("product" / u32)
+        .and(warp::path::end())
+        .and(warp::header::<String>(HEADER_AUTH))
+        .and_then(|product_id, auth| {
+            product::delete_product(auth, product_id)
+                .and_then(|()| Ok(warp::reply()))
+                .or_else(|e| Err(warp::reject::custom(e.compat())))
+        });
+
+    // DELETE /aisle/<id>
+    let delete_aisle = path!("aisle" / u32)
+        .and(warp::path::end())
+        .and(warp::header::<String>(HEADER_AUTH))
+        .and_then(|aisle_id, auth| {
+            aisle::delete_aisle(auth, aisle_id)
+                .and_then(|()| Ok(warp::reply()))
+                .or_else(|e| Err(warp::reject::custom(e.compat())))
+        });
+
+    // DELETE /store/<id>
+    let delete_store = path!("store" / u32)
+        .and(warp::path::end())
+        .and(warp::header::<String>(HEADER_AUTH))
+        .and_then(|store_id, auth| {
+            store::delete_store(auth, store_id)
+                .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
 
@@ -164,9 +204,18 @@ fn main() {
         .and(edit_store.or(edit_aisle).or(rename_product))
         .recover(customize_error);
 
-    let get_routes = warp::get2().and(get_all_stores).recover(customize_error);
+    let get_routes = warp::get2()
+        .and(get_all_stores.or(list_store))
+        .recover(customize_error);
 
-    let del_routes = warp::delete2().and(delete_user).recover(customize_error);
+    let del_routes = warp::delete2()
+        .and(
+            delete_product
+                .or(delete_aisle)
+                .or(delete_store)
+                .or(delete_user),
+        )
+        .recover(customize_error);
 
     println!("Efficio's ready for requests...");
     warp::serve(get_routes.or(post_routes).or(put_routes).or(del_routes))
