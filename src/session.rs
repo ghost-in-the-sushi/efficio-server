@@ -1,12 +1,11 @@
-use std::collections::HashMap;
+use serde::Deserialize;
 
-use crate::consts::*;
 use crate::db::{sessions, users};
 use crate::error::Result;
-use crate::helpers::*;
 use crate::token::Token;
 use crate::types::*;
 
+#[derive(Deserialize, Debug)]
 pub struct AuthInfo {
     pub username: String,
     pub password: String,
@@ -18,11 +17,11 @@ impl Drop for AuthInfo {
     }
 }
 
-pub fn login(auth_struct: HashMap<String, String>) -> Result<Token> {
-    let auth_info = AuthInfo {
-        username: extract_value(&auth_struct, K_USERNAME, "Missing username")?,
-        password: extract_value(&auth_struct, K_PASSWORD, "Missing password")?,
-    };
+pub fn login(auth_info: &AuthInfo) -> Result<Token> {
+    // let auth_info = AuthInfo {
+    //     username: extract_value(&auth_struct, K_USERNAME, "Missing username")?,
+    //     password: extract_value(&auth_struct, K_PASSWORD, "Missing password")?,
+    // };
     let (token, user_id) = users::verify_password(&auth_info)?;
     sessions::store_session(&token.session_token, &user_id)?;
     Ok(token)

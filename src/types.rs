@@ -1,6 +1,7 @@
 use derive_deref::Deref;
 use derive_more::Constructor;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 
 #[derive(Deref, PartialEq, Eq)]
 pub struct Auth<'a>(pub &'a str);
@@ -25,6 +26,12 @@ pub struct StoreLight {
     store_id: u32,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NameData {
+    pub name: String,
+}
+
 #[derive(Debug, Serialize, Constructor, PartialEq, Eq)]
 pub struct StoreLightList {
     stores: Vec<StoreLight>,
@@ -45,11 +52,13 @@ pub struct Aisle {
     products: Vec<Product>,
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize_repr, Serialize_repr, Debug, Clone, PartialEq)]
+#[repr(u32)]
+#[serde(deny_unknown_fields)]
 pub enum Unit {
-    Unit,
-    Gram,
-    Ml,
+    Unit = 0,
+    Gram = 1,
+    Ml = 2,
 }
 
 impl From<Unit> for u32 {
@@ -82,4 +91,22 @@ pub struct Product {
     is_done: bool,
     unit: Unit,
     sort_weight: f32,
+}
+
+#[derive(Debug, Constructor)]
+pub struct ProductItemWeight {
+    pub id: u32,
+    pub sort_weight: f32,
+}
+
+#[derive(Debug, Constructor)]
+pub struct AisleItemWeight {
+    pub id: u32,
+    pub sort_weight: f32,
+}
+
+#[derive(Debug, Constructor)]
+pub struct EditWeight {
+    sections: Vec<AisleItemWeight>,
+    products: Vec<ProductItemWeight>,
 }

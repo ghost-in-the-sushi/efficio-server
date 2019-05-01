@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use failure::{self, Fail};
 use warp::{self, http::StatusCode, path, Filter, Rejection, Reply};
 
@@ -5,7 +7,6 @@ mod aisle;
 mod consts;
 mod db;
 mod error;
-mod helpers;
 mod product;
 mod session;
 mod store;
@@ -26,6 +27,10 @@ fn nuke() -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
     }
 }
 
+fn change_sort_weight(auth: String, obj: HashMap<String, String>) -> error::Result<()> {
+    Ok(())
+}
+
 fn main() {
     // POST /nuke
     let nuke = warp::path("nuke")
@@ -36,8 +41,8 @@ fn main() {
     let create_user = warp::path("user")
         .and(warp::path::end())
         .and(warp::body::json())
-        .and_then(|obj| {
-            user::create_user(obj)
+        .and_then(|user: user::User| {
+            user::create_user(&user)
                 .and_then(|token| Ok(warp::reply::json(&token)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -46,8 +51,8 @@ fn main() {
     let login = warp::path("login")
         .and(warp::path::end())
         .and(warp::body::json())
-        .and_then(|obj| {
-            session::login(obj)
+        .and_then(|auth_info: session::AuthInfo| {
+            session::login(&auth_info)
                 .and_then(|token| Ok(warp::reply::json(&token)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -77,8 +82,8 @@ fn main() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(|auth, obj| {
-            store::create_store(auth, obj)
+        .and_then(|auth, data: types::NameData| {
+            store::create_store(auth, &data)
                 .and_then(|store_id| Ok(warp::reply::json(&store_id)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -88,8 +93,8 @@ fn main() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(|id, auth, obj| {
-            store::edit_store(auth, id, obj)
+        .and_then(|id, auth, data: types::NameData| {
+            store::edit_store(auth, id, &data)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -99,8 +104,8 @@ fn main() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(|store_id, auth, obj| {
-            aisle::create_aisle(auth, store_id, obj)
+        .and_then(|store_id, auth, data: types::NameData| {
+            aisle::create_aisle(auth, store_id, &data)
                 .and_then(|aisle| Ok(warp::reply::json(&aisle)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -110,8 +115,8 @@ fn main() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(|aisle_id, auth, obj| {
-            aisle::rename_aisle(auth, aisle_id, obj)
+        .and_then(|aisle_id, auth, data: types::NameData| {
+            aisle::rename_aisle(auth, aisle_id, &data)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -121,19 +126,19 @@ fn main() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(|aisle_id, auth, obj| {
-            product::create_product(auth, aisle_id, obj)
+        .and_then(|aisle_id, auth, data: types::NameData| {
+            product::create_product(auth, aisle_id, &data)
                 .and_then(|product| Ok(warp::reply::json(&product)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
 
     // PUT /product/<id>
-    let rename_product = path!("product" / u32)
+    let edit_product = path!("product" / u32)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(|product_id, auth, obj| {
-            product::edit_product(auth, product_id, obj)
+        .and_then(|product_id, auth, data: db::products::EditProduct| {
+            product::edit_product(auth, product_id, &data)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -201,7 +206,7 @@ fn main() {
         .recover(customize_error);
 
     let put_routes = warp::put2()
-        .and(edit_store.or(edit_aisle).or(rename_product))
+        .and(edit_store.or(edit_aisle).or(edit_product))
         .recover(customize_error);
 
     let get_routes = warp::get2()

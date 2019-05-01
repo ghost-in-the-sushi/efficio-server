@@ -107,6 +107,19 @@ pub fn transaction_purge_aisles_in_store(
     Ok(())
 }
 
+pub fn edit_aisle_sort_weight(
+    c: &redis::Connection,
+    auth: &Auth,
+    data: &AisleItemWeight,
+) -> Result<()> {
+    let aisle_id = AisleId(data.id);
+    let aisle_owner = get_aisle_owner(&c, &aisle_id)?;
+    db::verify_permission_auth(&c, &auth, &aisle_owner)?;
+    let aisle_key = aisle_key(&aisle_id);
+    c.hset(&aisle_key, AISLE_WEIGHT, data.sort_weight)?;
+    Ok(())
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;

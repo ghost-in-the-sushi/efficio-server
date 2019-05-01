@@ -1,18 +1,16 @@
-use std::collections::HashMap;
-
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde::Deserialize;
 use validator;
 use zxcvbn;
 
 use crate::consts::*;
 use crate::db;
 use crate::error::{self, Result, ServerError};
-use crate::helpers::*;
 use crate::token::Token;
 use crate::types::*;
 
-#[derive(Default, Debug)]
+#[derive(Default, Deserialize, Debug)]
 pub struct User {
     pub username: String,
     pub email: String,
@@ -26,12 +24,12 @@ impl Drop for User {
     }
 }
 
-pub fn create_user(user_json: HashMap<String, String>) -> Result<Token> {
-    let user = User {
-        username: extract_value(&user_json, K_USERNAME, "Missing username")?,
-        email: extract_value(&user_json, K_EMAIL, "Missing email")?,
-        password: extract_value(&user_json, K_PASSWORD, "Missing password")?,
-    };
+pub fn create_user(user: &User) -> Result<Token> {
+    // let user = User {
+    //     username: extract_value(&user_json, K_USERNAME, "Missing username")?,
+    //     email: extract_value(&user_json, K_EMAIL, "Missing email")?,
+    //     password: extract_value(&user_json, K_PASSWORD, "Missing password")?,
+    // };
 
     validate_email(&user.email)?;
     validate_password(&user)?;

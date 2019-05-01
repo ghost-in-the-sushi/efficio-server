@@ -2,6 +2,7 @@ use std::convert::From;
 
 use derive_more::Constructor;
 use redis::{self, Commands, PipelineCommands};
+use serde::Deserialize;
 
 use crate::db;
 use crate::error::*;
@@ -16,15 +17,16 @@ const PROD_QTY: &str = "quantity";
 const PROD_UNIT: &str = "unit";
 const PROD_AISLE: &str = "aisle";
 
-#[derive(Constructor)]
-pub struct EditProduct<'a> {
-    name: Option<&'a str>,
+#[derive(Constructor, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EditProduct {
+    name: Option<String>,
     quantity: Option<u32>,
     unit: Option<Unit>,
     is_done: Option<bool>,
 }
 
-impl<'a> EditProduct<'a> {
+impl EditProduct {
     pub fn has_at_last_a_field(&self) -> bool {
         self.name.is_none()
             && self.quantity.is_none()
@@ -107,7 +109,7 @@ pub fn modify_product(auth: &Auth, edit_data: &EditProduct, product_id: &Product
     let product_owner = get_product_owner(&c, &product_id)?;
     db::verify_permission_auth(&c, &auth, &product_owner)?;
     let product_key = product_key(&product_id);
-    if let Some(new_name) = edit_data.name {
+    if let Some(ref new_name) = edit_data.name {
         c.hset(&product_key, PROD_NAME, new_name)?;
     }
     if let Some(qty) = edit_data.quantity {
@@ -151,6 +153,19 @@ pub fn transaction_purge_products_in_aisle(
         pipe.del(&product_key(&ProductId(p))).ignore();
     });
     pipe.del(&products_in_aisle_key).ignore();
+    Ok(())
+}
+
+pub fn edit_product_sort_weight(
+    c: &redis::Connection,
+    auth: &Auth,
+    data: &ProductItemWeight,
+) -> Result<()> {
+    let product_id = ProductId(data.id);
+    let product_owner = get_product_owner(&c, &product_id)?;
+    db::verify_permission_auth(&c, &auth, &product_owner)?;
+    let product_key = product_key(&product_id);
+    c.hset(&product_key, PROD_SORT_WEIGHT, data.sort_weight)?;
     Ok(())
 }
 

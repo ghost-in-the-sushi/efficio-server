@@ -1,22 +1,17 @@
-use std::collections::HashMap;
-
 use crate::db;
 use crate::error::*;
-use crate::helpers;
 use crate::types::*;
 
-pub fn create_store(auth: String, obj: HashMap<String, String>) -> Result<StoreId> {
+pub fn create_store(auth: String, data: &NameData) -> Result<StoreId> {
     let auth = Auth(&auth);
     db::sessions::validate_session(&auth)?;
-    let name = helpers::extract_value(&obj, "name", "Missing name")?;
-    db::stores::save_store(&auth, &name)
+    db::stores::save_store(&auth, &data.name)
 }
 
-pub fn edit_store(auth: String, id: u32, obj: HashMap<String, String>) -> Result<()> {
+pub fn edit_store(auth: String, id: u32, data: &NameData) -> Result<()> {
     let auth = Auth(&auth);
     db::sessions::validate_session(&auth)?;
-    let name = helpers::extract_value(&obj, "name", "Missing name")?;
-    db::stores::edit_store(&auth, &StoreId::new(id), &name)
+    db::stores::edit_store(&auth, &StoreId::new(id), &data.name)
 }
 
 pub fn list_stores(auth: String) -> Result<StoreLightList> {
