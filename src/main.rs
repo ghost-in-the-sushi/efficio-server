@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use failure::{self, Fail};
-use warp::{self, http::StatusCode, path, Filter, Rejection, Reply};
+use warp::{self, path, Filter, Rejection, Reply};
 
 mod aisle;
 mod consts;
@@ -229,8 +229,11 @@ fn main() {
 
 fn customize_error(err: Rejection) -> Result<impl Reply, Rejection> {
     if let Some(server_error) = err.find_cause::<failure::Compat<error::ServerError>>() {
-        let json = warp::reply::json(&server_error.get_ref().clone());
-        Ok(warp::reply::with_status(json, StatusCode::OK))
+        let server_error = server_error.get_ref();
+        Ok(warp::reply::with_status(
+            server_error.msg.to_owned(),
+            server_error.status,
+        ))
     } else {
         Err(err)
     }

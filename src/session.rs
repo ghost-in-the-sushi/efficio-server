@@ -18,10 +18,6 @@ impl Drop for AuthInfo {
 }
 
 pub fn login(auth_info: &AuthInfo) -> Result<Token> {
-    // let auth_info = AuthInfo {
-    //     username: extract_value(&auth_struct, K_USERNAME, "Missing username")?,
-    //     password: extract_value(&auth_struct, K_PASSWORD, "Missing password")?,
-    // };
     let (token, user_id) = users::verify_password(&auth_info)?;
     sessions::store_session(&token.session_token, &user_id)?;
     Ok(token)

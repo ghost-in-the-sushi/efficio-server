@@ -93,20 +93,20 @@ pub struct Product {
     sort_weight: f32,
 }
 
-#[derive(Debug, Constructor)]
+#[derive(Debug, Constructor, Deserialize)]
 pub struct ProductItemWeight {
     pub id: u32,
     pub sort_weight: f32,
 }
 
-#[derive(Debug, Constructor)]
+#[derive(Debug, Constructor, Deserialize)]
 pub struct AisleItemWeight {
     pub id: u32,
     pub sort_weight: f32,
 }
 
-#[derive(Debug, Constructor)]
+#[derive(Debug, Constructor, Deserialize)]
 pub struct EditWeight {
-    sections: Vec<AisleItemWeight>,
-    products: Vec<ProductItemWeight>,
+    sections: Option<Vec<AisleItemWeight>>,
+    products: Option<Vec<ProductItemWeight>>,
 }

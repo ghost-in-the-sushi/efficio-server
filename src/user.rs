@@ -25,12 +25,6 @@ impl Drop for User {
 }
 
 pub fn create_user(user: &User) -> Result<Token> {
-    // let user = User {
-    //     username: extract_value(&user_json, K_USERNAME, "Missing username")?,
-    //     email: extract_value(&user_json, K_EMAIL, "Missing email")?,
-    //     password: extract_value(&user_json, K_PASSWORD, "Missing password")?,
-    // };
-
     validate_email(&user.email)?;
     validate_password(&user)?;
     validate_username(&user.username)?;
