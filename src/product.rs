@@ -11,7 +11,7 @@ pub fn create_product(auth: String, aisle_id: u32, data: &NameData) -> Result<Pr
 pub fn edit_product(auth: String, product_id: u32, data: &db::products::EditProduct) -> Result<()> {
     let auth = Auth(&auth);
     db::sessions::validate_session(&auth)?;
-    if !data.has_at_last_a_field() {
+    if !data.has_at_least_a_field() {
         Err(ServerError::new(
             INVALID_PARAMS,
             "At least a field must be present",

@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use derive_deref::Deref;
 use derive_more::Constructor;
 use serde::{Deserialize, Serialize};
@@ -44,12 +46,40 @@ pub struct Store {
     aisles: Vec<Aisle>,
 }
 
-#[derive(Debug, Constructor, Serialize, PartialEq)]
+#[derive(Debug, Constructor, Serialize)]
 pub struct Aisle {
     aisle_id: u32,
     name: String,
-    sort_weight: f32,
+    pub sort_weight: f32,
     products: Vec<Product>,
+}
+
+impl PartialEq for Aisle {
+    fn eq(&self, other: &Aisle) -> bool {
+        self.aisle_id == other.aisle_id && self.name == other.name
+    }
+}
+
+impl Eq for Aisle {}
+
+impl PartialOrd for Aisle {
+    fn partial_cmp(&self, other: &Aisle) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Aisle {
+    fn cmp(&self, other: &Aisle) -> Ordering {
+        if (self.sort_weight - other.sort_weight).abs() < std::f32::EPSILON {
+            self.name.cmp(&other.name)
+        } else {
+            if self.sort_weight < other.sort_weight {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        }
+    }
 }
 
 #[derive(Deserialize_repr, Serialize_repr, Debug, Clone, PartialEq)]
@@ -83,14 +113,42 @@ impl From<u32> for Unit {
     }
 }
 
-#[derive(Debug, Serialize, Constructor, PartialEq)]
+#[derive(Debug, Serialize, Constructor)]
 pub struct Product {
     product_id: u32,
     name: String,
     quantity: u32,
     is_done: bool,
     unit: Unit,
-    sort_weight: f32,
+    pub sort_weight: f32,
+}
+
+impl PartialEq for Product {
+    fn eq(&self, other: &Product) -> bool {
+        self.product_id == other.product_id && self.name == other.name
+    }
+}
+
+impl Eq for Product {}
+
+impl PartialOrd for Product {
+    fn partial_cmp(&self, other: &Product) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Product {
+    fn cmp(&self, other: &Product) -> Ordering {
+        if (self.sort_weight - other.sort_weight).abs() < std::f32::EPSILON {
+            self.name.cmp(&other.name)
+        } else {
+            if self.sort_weight < other.sort_weight {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        }
+    }
 }
 
 #[derive(Debug, Constructor, Deserialize)]
@@ -107,6 +165,12 @@ pub struct AisleItemWeight {
 
 #[derive(Debug, Constructor, Deserialize)]
 pub struct EditWeight {
-    sections: Option<Vec<AisleItemWeight>>,
-    products: Option<Vec<ProductItemWeight>>,
+    pub aisles: Option<Vec<AisleItemWeight>>,
+    pub products: Option<Vec<ProductItemWeight>>,
+}
+
+impl EditWeight {
+    pub fn has_at_least_a_field(&self) -> bool {
+        self.aisles.is_some() || self.products.is_some()
+    }
 }

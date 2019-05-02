@@ -39,6 +39,11 @@ pub fn get_aisles_in_store(c: &redis::Connection, store_id: &StoreId) -> Result<
         .collect()
 }
 
+fn find_max_weight_in_store(c: &redis::Connection, store_id: &StoreId) -> Result<f32> {
+    let aisles = get_aisles_in_store(&c, &store_id)?;
+    Ok(aisles.iter().max().map_or(0f32, |a| a.sort_weight))
+}
+
 pub fn save_aisle(auth: &Auth, store_id: &StoreId, name: &str) -> Result<Aisle> {
     let c = get_connection()?;
     let aisle_id = AisleId(c.incr(NEXT_AISLE_ID, 1)?);
@@ -47,10 +52,11 @@ pub fn save_aisle(auth: &Auth, store_id: &StoreId, name: &str) -> Result<Aisle> 
     let user_id = db::sessions::get_user_id(&c, &auth)?;
     let store_owner = db::stores::get_store_owner(&c, &store_id)?;
     db::verify_permission(&user_id, &store_owner)?;
+    let new_sort_weight = find_max_weight_in_store(&c, &store_id)? + 1f32;
     redis::transaction(&c, &[&aisle_key, &aisle_in_store_key], |pipe| {
         pipe.hset(&aisle_key, AISLE_NAME, name)
             .ignore()
-            .hset(&aisle_key, AISLE_WEIGHT, 0.0f32)
+            .hset(&aisle_key, AISLE_WEIGHT, new_sort_weight)
             .ignore()
             .hset(&aisle_key, AISLE_OWNER, *user_id)
             .ignore()
@@ -109,6 +115,7 @@ pub fn transaction_purge_aisles_in_store(
 
 pub fn edit_aisle_sort_weight(
     c: &redis::Connection,
+    pipe: &mut redis::Pipeline,
     auth: &Auth,
     data: &AisleItemWeight,
 ) -> Result<()> {
@@ -116,7 +123,8 @@ pub fn edit_aisle_sort_weight(
     let aisle_owner = get_aisle_owner(&c, &aisle_id)?;
     db::verify_permission_auth(&c, &auth, &aisle_owner)?;
     let aisle_key = aisle_key(&aisle_id);
-    c.hset(&aisle_key, AISLE_WEIGHT, data.sort_weight)?;
+    pipe.hset(&aisle_key, AISLE_WEIGHT, data.sort_weight)
+        .ignore();
     Ok(())
 }
 

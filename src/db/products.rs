@@ -27,11 +27,11 @@ pub struct EditProduct {
 }
 
 impl EditProduct {
-    pub fn has_at_last_a_field(&self) -> bool {
-        self.name.is_none()
-            && self.quantity.is_none()
-            && self.unit.is_none()
-            && self.is_done.is_none()
+    pub fn has_at_least_a_field(&self) -> bool {
+        self.name.is_some()
+            || self.quantity.is_some()
+            || self.unit.is_some()
+            || self.is_done.is_some()
     }
 }
 
@@ -68,6 +68,11 @@ pub fn get_products_in_aisle(c: &redis::Connection, aisle_id: &AisleId) -> Resul
         .collect()
 }
 
+fn find_max_weight_in_aisle(c: &redis::Connection, aisle_id: &AisleId) -> Result<f32> {
+    let products = get_products_in_aisle(&c, &aisle_id)?;
+    Ok(products.iter().max().map_or(0f32, |p| p.sort_weight))
+}
+
 pub fn save_product(auth: &Auth, name: &str, aisle_id: &AisleId) -> Result<Product> {
     let c = db::get_connection()?;
     let aisle_owner = db::aisles::get_aisle_owner(&c, &aisle_id)?;
@@ -76,12 +81,13 @@ pub fn save_product(auth: &Auth, name: &str, aisle_id: &AisleId) -> Result<Produ
     let prod_id = ProductId(c.incr(NEXT_PROD_ID, 1)?);
     let prod_key = product_key(&prod_id);
     let prod_in_aisle_key = products_in_aisle_key(&aisle_id);
+    let new_sort_weight = find_max_weight_in_aisle(&c, &aisle_id)? + 1f32;
     redis::transaction(&c, &[&prod_key, &prod_in_aisle_key], |pipe| {
         pipe.hset(&prod_key, PROD_NAME, name)
             .ignore()
             .hset(&prod_key, PROD_QTY, 1)
             .ignore()
-            .hset(&prod_key, PROD_SORT_WEIGHT, 0f32)
+            .hset(&prod_key, PROD_SORT_WEIGHT, new_sort_weight)
             .ignore()
             .hset(&prod_key, PROD_STATE, false as i32)
             .ignore()
@@ -158,6 +164,7 @@ pub fn transaction_purge_products_in_aisle(
 
 pub fn edit_product_sort_weight(
     c: &redis::Connection,
+    pipe: &mut redis::Pipeline,
     auth: &Auth,
     data: &ProductItemWeight,
 ) -> Result<()> {
@@ -165,7 +172,8 @@ pub fn edit_product_sort_weight(
     let product_owner = get_product_owner(&c, &product_id)?;
     db::verify_permission_auth(&c, &auth, &product_owner)?;
     let product_key = product_key(&product_id);
-    c.hset(&product_key, PROD_SORT_WEIGHT, data.sort_weight)?;
+    pipe.hset(&product_key, PROD_SORT_WEIGHT, data.sort_weight)
+        .ignore();
     Ok(())
 }
 
@@ -212,7 +220,7 @@ pub mod tests {
     #[test]
     fn modify_product_test() {
         save_product_test();
-        let data = EditProduct::new(Some(RENAME), Some(2), None, Some(true));
+        let data = EditProduct::new(Some(RENAME.to_owned()), Some(2), None, Some(true));
         assert_eq!(Ok(()), modify_product(&AUTH, &data, &ProductId(1)));
 
         // check DB
