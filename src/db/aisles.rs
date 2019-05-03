@@ -152,6 +152,7 @@ pub mod tests {
     pub fn aisle_key(aisle_id: &AisleId) -> String {
         super::aisle_key(&aisle_id)
     }
+
     // create a user, a session with AUTH as token, a store and an aisle
     pub fn save_aisle_test() {
         store_user_for_test_with_reset();
@@ -330,7 +331,17 @@ pub mod tests {
         assert_eq!(Ok(false), c.exists(&aisle_key(&AisleId(2))));
     }
 
+    #[test]
     fn edit_aisle_sort_weight_test() {
         save_aisle_test();
+        let c = db::get_connection().unwrap();
+        let mut pipe = redis::pipe();
+        pipe.atomic();
+        assert_eq!(
+            Ok(()),
+            edit_aisle_sort_weight(&c, &mut pipe, &AUTH, &AisleItemWeight::new(1, 2.0f32))
+        );
+        assert_eq!(Ok(()), pipe.query(&c));
+        assert_eq!(Ok(2.0f32), c.hget(aisle_key(&AisleId(1)), AISLE_WEIGHT));
     }
 }

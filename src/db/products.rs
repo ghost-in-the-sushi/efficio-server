@@ -277,4 +277,21 @@ pub mod tests {
         assert_eq!(Ok(false), c.exists(&product_key(&ProductId(2))));
         assert_eq!(Ok(false), c.exists(&products_in_aisle_key(&aisle_id)));
     }
+
+    #[test]
+    fn edit_product_sort_weight_test() {
+        save_product_test();
+        let c = db::get_connection().unwrap();
+        let mut pipe = redis::pipe();
+        pipe.atomic();
+        assert_eq!(
+            Ok(()),
+            edit_product_sort_weight(&c, &mut pipe, &AUTH, &ProductItemWeight::new(1, 2.0f32))
+        );
+        assert_eq!(Ok(()), pipe.query(&c));
+        assert_eq!(
+            Ok(2.0f32),
+            c.hget(product_key(&ProductId(1)), PROD_SORT_WEIGHT)
+        );
+    }
 }
