@@ -40,22 +40,18 @@ pub fn delete_user(auth: String) -> Result<()> {
 
 fn validate_email(mail: &str) -> Result<()> {
     if !validator::validate_email(mail) {
-        Err(ServerError {
-            status: error::INVALID_PARAMS,
-            msg: "Email field is invalid".to_string(),
-        })
+        Err(ServerError::new(
+            error::INVALID_PARAMS,
+            "Email field is invalid",
+        ))
     } else {
         Ok(())
     }
 }
 
 fn validate_password(user: &User) -> Result<()> {
-    let entropy = zxcvbn::zxcvbn(&user.password, &[&user.username, &user.email]).or_else(|_| {
-        Err(ServerError {
-            status: error::INVALID_PARAMS,
-            msg: "Empty password".to_string(),
-        })
-    })?;
+    let entropy = zxcvbn::zxcvbn(&user.password, &[&user.username, &user.email])
+        .or_else(|_| Err(ServerError::new(error::INVALID_PARAMS, "Empty password")))?;
 
     if entropy.score < MIN_ENTROPY_SCORE {
         Err(ServerError::new(

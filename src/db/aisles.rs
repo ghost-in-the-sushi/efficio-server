@@ -66,7 +66,12 @@ pub fn save_aisle(auth: &Auth, store_id: &StoreId, name: &str) -> Result<Aisle> 
             .query(&c)
     })?;
 
-    Ok(Aisle::new(*aisle_id, name.to_owned(), 0.0, vec![]))
+    Ok(Aisle::new(
+        *aisle_id,
+        name.to_owned(),
+        new_sort_weight,
+        vec![],
+    ))
 }
 
 pub fn edit_aisle(auth: &Auth, aisle_id: &AisleId, new_name: &str) -> Result<()> {
@@ -100,16 +105,18 @@ pub fn transaction_purge_aisles_in_store(
     store_id: &StoreId,
 ) -> Result<()> {
     let aisles_in_store_key = aisles_in_store_key(&store_id);
-    let aisles: Vec<u32> = c.smembers(&aisles_in_store_key)?;
-    for aisle_id in aisles {
-        let aisle_id = AisleId(aisle_id);
-        db::products::transaction_purge_products_in_aisle(&c, &mut pipe, &aisle_id)?;
-        pipe.del(&aisle_key(&aisle_id))
-            .ignore()
-            .del(&db::products::products_in_aisle_key(&aisle_id))
-            .ignore();
+    let aisles: Option<Vec<u32>> = c.smembers(&aisles_in_store_key)?;
+    if let Some(aisles) = aisles {
+        for aisle_id in aisles {
+            let aisle_id = AisleId(aisle_id);
+            db::products::transaction_purge_products_in_aisle(&c, &mut pipe, &aisle_id)?;
+            pipe.del(&aisle_key(&aisle_id))
+                .ignore()
+                .del(&db::products::products_in_aisle_key(&aisle_id))
+                .ignore();
+        }
+        pipe.del(&aisles_in_store_key).ignore();
     }
-    pipe.del(&aisles_in_store_key).ignore();
     Ok(())
 }
 
@@ -163,7 +170,7 @@ pub mod tests {
         let name: String = c.hget(&key, AISLE_NAME).unwrap();
         assert_eq!(NAME, name.as_str());
         let weight: f32 = c.hget(&key, AISLE_WEIGHT).unwrap();
-        assert!(weight - 0.0f32 < std::f32::EPSILON);
+        assert!(weight - 1.0f32 < std::f32::EPSILON);
         let aisle_store: u32 = c.hget(&key, AISLE_STORE).unwrap();
         assert_eq!(1, aisle_store);
         let res: bool = c.sismember(&aisles_in_store_key(&store_id), 1).unwrap();
@@ -261,7 +268,7 @@ pub mod tests {
         // this create a store, an aisle and put a product in it
         db::products::tests::save_product_test();
         // add another product
-        let expected = Product::new(2, "product2".to_owned(), 1, false, Unit::Unit, 0f32);
+        let expected = Product::new(2, "product2".to_owned(), 1, false, Unit::Unit, 1f32);
         assert_eq!(
             Ok(expected),
             db::products::save_product(&AUTH, "product2", &AisleId(1))
@@ -321,5 +328,9 @@ pub mod tests {
         );
         assert_eq!(Ok(false), c.exists(&aisle_key(&AisleId(1))));
         assert_eq!(Ok(false), c.exists(&aisle_key(&AisleId(2))));
+    }
+
+    fn edit_aisle_sort_weight_test() {
+        save_aisle_test();
     }
 }

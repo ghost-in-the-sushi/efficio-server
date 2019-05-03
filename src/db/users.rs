@@ -75,9 +75,9 @@ pub fn delete_user(auth: &Auth) -> Result<()> {
     let user_id = db::sessions::get_user_id(&c, auth)?;
     let user_key = user_key(&user_id);
     let username: String = c.hget(&user_key, USER_NAME)?;
+    db::stores::delete_all_user_stores(&auth)?;
     c.hdel(USERS_LIST, username.to_lowercase())?;
     db::sessions::delete_all_user_sessions(auth)?;
-    db::stores::delete_all_user_stores(&auth)?;
     Ok(c.del(&user_key)?)
 }
 
@@ -140,11 +140,16 @@ pub mod tests {
         store_user_for_test();
     }
 
+    #[test]
     fn store_user_test() {
         store_user_for_test_with_reset();
         let user = gen_user();
         let c = db::get_connection().unwrap();
         assert_eq!(Ok(true), c.exists("user:1"));
+        assert_eq!(Ok(true), c.exists("sessions:1"));
+        assert_eq!(Ok(1), c.get("next_user_id"));
+        assert_eq!(Ok(true), c.hexists("users", "toto"));
+        assert_eq!(Ok(1), c.hget("users", "toto"));
 
         assert_eq!(
             Ok(true),

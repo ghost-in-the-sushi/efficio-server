@@ -18,6 +18,8 @@ pub struct ServerError {
     #[serde(skip)]
     pub status: StatusCode,
     pub msg: String,
+    #[serde(skip)]
+    pub source: Option<String>,
 }
 
 impl Display for ServerError {
@@ -31,6 +33,7 @@ impl From<RedisError> for ServerError {
         ServerError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             msg: err.description().to_string(),
+            source: err.source().map_or(None, |e| Some(e.to_string())),
         }
     }
 }
@@ -48,6 +51,7 @@ impl ServerError {
         ServerError {
             status: status,
             msg: msg.to_owned(),
+            source: None,
         }
     }
 }

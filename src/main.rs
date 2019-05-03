@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use failure::{self, Fail};
 use warp::{self, path, Filter, Rejection, Reply};
 
@@ -27,8 +25,30 @@ fn nuke() -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
     }
 }
 
-fn change_sort_weight(auth: String, obj: HashMap<String, String>) -> error::Result<()> {
-    Ok(())
+fn change_sort_weight(auth: String, data: &types::EditWeight) -> error::Result<()> {
+    if !data.has_at_least_a_field() {
+        Err(error::ServerError::new(
+            error::INVALID_PARAMS,
+            "At least a field must be present",
+        ))
+    } else {
+        let auth = types::Auth(&auth);
+        let c = db::get_connection()?;
+        let mut pipe = redis::pipe();
+        pipe.atomic();
+        if let Some(ref aisles) = data.aisles {
+            aisles
+                .iter()
+                .try_for_each(|w| db::aisles::edit_aisle_sort_weight(&c, &mut pipe, &auth, &w))?;
+        }
+        if let Some(ref products) = data.products {
+            products.iter().try_for_each(|w| {
+                db::products::edit_product_sort_weight(&c, &mut pipe, &auth, &w)
+            })?;
+        }
+        pipe.query(&c)?;
+        Ok(())
+    }
 }
 
 fn main() {
@@ -193,20 +213,36 @@ fn main() {
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
 
+    // PUT /sort_weight
+    let change_sort_weight = warp::path("sort_weight")
+        .and(warp::path::end())
+        .and(warp::header::<String>(HEADER_AUTH))
+        .and(warp::body::json())
+        .and_then(|auth, data: types::EditWeight| {
+            change_sort_weight(auth, &data)
+                .and_then(|()| Ok(warp::reply()))
+                .or_else(|e| Err(warp::reject::custom(e.compat())))
+        });
+
     let post_routes = warp::post2()
         .and(
-            create_user
-                .or(login)
-                .or(logout)
-                .or(create_store)
+            create_product
                 .or(create_aisle)
-                .or(create_product)
+                .or(create_store)
+                .or(login)
+                .or(create_user)
+                .or(logout)
                 .or(nuke),
         )
         .recover(customize_error);
 
     let put_routes = warp::put2()
-        .and(edit_store.or(edit_aisle).or(edit_product))
+        .and(
+            change_sort_weight
+                .or(edit_product)
+                .or(edit_aisle)
+                .or(edit_store),
+        )
         .recover(customize_error);
 
     let get_routes = warp::get2()

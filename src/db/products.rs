@@ -106,7 +106,7 @@ pub fn save_product(auth: &Auth, name: &str, aisle_id: &AisleId) -> Result<Produ
         1,
         false,
         Unit::Unit,
-        0.0f32,
+        new_sort_weight,
     ))
 }
 
@@ -154,11 +154,13 @@ pub fn transaction_purge_products_in_aisle(
     aisle_id: &AisleId,
 ) -> Result<()> {
     let products_in_aisle_key = products_in_aisle_key(&aisle_id);
-    let products: Vec<u32> = c.smembers(&products_in_aisle_key)?;
-    products.into_iter().for_each(|p| {
-        pipe.del(&product_key(&ProductId(p))).ignore();
-    });
-    pipe.del(&products_in_aisle_key).ignore();
+    let products: Option<Vec<u32>> = c.smembers(&products_in_aisle_key)?;
+    if let Some(products) = products {
+        products.into_iter().for_each(|p| {
+            pipe.del(&product_key(&ProductId(p))).ignore();
+        });
+        pipe.del(&products_in_aisle_key).ignore();
+    }
     Ok(())
 }
 
@@ -192,7 +194,7 @@ pub mod tests {
         db::sessions::tests::store_session_for_test(&AUTH);
         let store_id = db::stores::save_store(&AUTH, "MyStore").unwrap();
         db::aisles::save_aisle(&AUTH, &store_id, db::aisles::tests::NAME).unwrap();
-        let expected = Product::new(1, "product1".to_owned(), 1, false, Unit::Unit, 0f32);
+        let expected = Product::new(1, "product1".to_owned(), 1, false, Unit::Unit, 1f32);
         assert_eq!(Ok(expected), save_product(&AUTH, NAME, &AisleId(1)));
 
         // check DB
@@ -203,7 +205,7 @@ pub mod tests {
         let qty: u32 = c.hget(&prod_key, PROD_QTY).unwrap();
         assert_eq!(1, qty);
         let sort: f32 = c.hget(&prod_key, PROD_SORT_WEIGHT).unwrap();
-        assert!(sort - 0f32 < std::f32::EPSILON);
+        assert!(sort - 1f32 < std::f32::EPSILON);
         let is_done: i32 = c.hget(&prod_key, PROD_STATE).unwrap();
         assert_eq!(false, is_done != 0);
         let owner: u32 = c.hget(&prod_key, PROD_OWNER).unwrap();

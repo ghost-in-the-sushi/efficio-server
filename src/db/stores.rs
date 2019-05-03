@@ -73,6 +73,7 @@ pub fn get_all_stores(auth: &Auth) -> Result<Vec<StoreLight>> {
 }
 
 pub fn delete_store(auth: &Auth, store_id: &StoreId) -> Result<()> {
+    dbg!("delete_store");
     let c = db::get_connection()?;
     let owner_id = get_store_owner(&c, &store_id)?;
     db::verify_permission_auth(&c, &auth, &owner_id)?;
@@ -92,9 +93,11 @@ pub fn delete_all_user_stores(auth: &Auth) -> Result<()> {
     let c = db::get_connection()?;
     let user_id = db::sessions::get_user_id(&c, &auth)?;
     let user_stores_key = user_stores_list_key(&user_id);
-    let stores: Vec<u32> = c.smembers(&user_stores_key)?;
-    for store_id in stores {
-        delete_store(&auth, &StoreId::new(store_id))?;
+    let stores: Option<Vec<u32>> = c.smembers(&user_stores_key)?;
+    if let Some(stores) = stores {
+        for store_id in stores {
+            delete_store(&auth, &StoreId::new(store_id))?;
+        }
     }
     Ok(())
 }
