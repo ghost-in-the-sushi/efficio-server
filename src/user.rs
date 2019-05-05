@@ -4,11 +4,12 @@ use serde::Deserialize;
 use validator;
 use zxcvbn;
 
-use crate::consts::*;
 use crate::db;
 use crate::error::{self, Result, ServerError};
 use crate::token::Token;
 use crate::types::*;
+
+const MIN_ENTROPY_SCORE: u8 = 2;
 
 #[derive(Default, Deserialize, Debug)]
 pub struct User {
