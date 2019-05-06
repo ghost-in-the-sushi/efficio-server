@@ -1,7 +1,6 @@
 use redis::{self, Commands, PipelineCommands};
 
 use crate::db::get_connection;
-use crate::db::users;
 use crate::error::{self, Result, ServerError};
 use crate::types::*;
 
@@ -73,10 +72,8 @@ fn delete_session_with_connection(
 
 pub fn delete_session(auth: &Auth) -> Result<()> {
     let c = get_connection()?;
-    // save user_id before deleting the auth from sessions
     let user_id = get_user_id(&c, auth)?;
-    delete_session_with_connection(&c, auth, &user_id)?;
-    users::regen_auth(&c, &user_id)
+    delete_session_with_connection(&c, auth, &user_id)
 }
 
 pub fn delete_all_user_sessions(auth: &Auth) -> Result<()> {

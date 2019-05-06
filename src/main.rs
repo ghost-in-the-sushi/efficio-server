@@ -2,7 +2,6 @@ use failure::{self, Fail};
 use warp::{self, path, Filter, Rejection, Reply};
 
 mod aisle;
-mod consts;
 mod db;
 mod error;
 mod product;

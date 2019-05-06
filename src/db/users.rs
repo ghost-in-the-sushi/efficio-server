@@ -98,6 +98,7 @@ pub fn verify_password(auth_info: &AuthInfo) -> Result<(Token, UserId)> {
     let hashed_pwd = hash(&auth_info.password, &salt_pwd);
     if hashed_pwd == stored_pwd {
         let auth: String = c.hget(&user_key, USER_AUTH)?;
+        regen_auth(&c, &user_id)?;
         Ok((auth.into(), user_id))
     } else {
         Err(ServerError::new(
