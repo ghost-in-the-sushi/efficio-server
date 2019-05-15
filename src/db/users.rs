@@ -201,16 +201,6 @@ pub mod tests {
         assert_eq!(false, res.is_ok());
     }
 
-    // pub fn delete_user(auth: &Auth) -> Result<()> {
-    //     let c = db::get_connection()?;
-    //     let user_id = db::sessions::get_user_id(&c, auth)?;
-    //     let user_key = user_key(&user_id);
-    //     let username: String = c.hget(&user_key, USER_NAME)?;
-    //     db::stores::delete_all_user_stores(&auth)?;
-    //     c.hdel(USERS_LIST, &username.to_lowercase())?;
-    //     db::sessions::delete_all_user_sessions(auth)?;
-    //     Ok(c.del(&user_key)?)
-    // }
     #[test]
     fn delete_user_test() {
         let token = store_user_for_test_with_reset();
