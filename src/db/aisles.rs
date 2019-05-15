@@ -1,6 +1,10 @@
-use redis::{self, Commands, PipelineCommands};
+#[cfg(not(test))]
+use redis::{self, transaction, Commands, Connection, Pipeline, PipelineCommands};
 
-use crate::db::{self, get_connection};
+#[cfg(test)]
+use fake_redis::{transaction, FakeConnection as Connection, FakePipeline as Pipeline};
+
+use crate::db;
 use crate::error::*;
 use crate::types::*;
 
@@ -18,11 +22,11 @@ fn aisles_in_store_key(id: &StoreId) -> String {
     format!("aisles_in_store:{}", **id)
 }
 
-pub fn get_aisle_owner(c: &redis::Connection, aisle_id: &AisleId) -> Result<UserId> {
+pub fn get_aisle_owner(c: &Connection, aisle_id: &AisleId) -> Result<UserId> {
     Ok(UserId(c.hget(&aisle_key(&aisle_id), AISLE_OWNER)?))
 }
 
-pub fn get_aisles_in_store(c: &redis::Connection, store_id: &StoreId) -> Result<Vec<Aisle>> {
+pub fn get_aisles_in_store(c: &Connection, store_id: &StoreId) -> Result<Vec<Aisle>> {
     let aisles: Vec<u32> = c.smembers(&aisles_in_store_key(&store_id))?;
     aisles
         .into_iter()
@@ -39,13 +43,13 @@ pub fn get_aisles_in_store(c: &redis::Connection, store_id: &StoreId) -> Result<
         .collect()
 }
 
-fn find_max_weight_in_store(c: &redis::Connection, store_id: &StoreId) -> Result<f32> {
+fn find_max_weight_in_store(c: &Connection, store_id: &StoreId) -> Result<f32> {
     let aisles = get_aisles_in_store(&c, &store_id)?;
     Ok(aisles.iter().max().map_or(0f32, |a| a.sort_weight))
 }
 
 pub fn save_aisle(auth: &Auth, store_id: &StoreId, name: &str) -> Result<Aisle> {
-    let c = get_connection()?;
+    let c = db::get_connection()?;
     let aisle_id = AisleId(c.incr(NEXT_AISLE_ID, 1)?);
     let aisle_key = aisle_key(&aisle_id);
     let aisle_in_store_key = aisles_in_store_key(&store_id);
@@ -53,7 +57,7 @@ pub fn save_aisle(auth: &Auth, store_id: &StoreId, name: &str) -> Result<Aisle> 
     let store_owner = db::stores::get_store_owner(&c, &store_id)?;
     db::verify_permission(&user_id, &store_owner)?;
     let new_sort_weight = find_max_weight_in_store(&c, &store_id)? + 1f32;
-    redis::transaction(&c, &[&aisle_key, &aisle_in_store_key], |pipe| {
+    transaction(&c, &[&aisle_key, &aisle_in_store_key], |pipe| {
         pipe.hset(&aisle_key, AISLE_NAME, name)
             .ignore()
             .hset(&aisle_key, AISLE_WEIGHT, new_sort_weight)
@@ -75,7 +79,7 @@ pub fn save_aisle(auth: &Auth, store_id: &StoreId, name: &str) -> Result<Aisle> 
 }
 
 pub fn edit_aisle(auth: &Auth, aisle_id: &AisleId, new_name: &str) -> Result<()> {
-    let c = get_connection()?;
+    let c = db::get_connection()?;
     let aisle_key = aisle_key(&aisle_id);
     let aisle_owner = get_aisle_owner(&c, &aisle_id)?;
     db::verify_permission_auth(&c, &auth, &aisle_owner)?;
@@ -83,13 +87,13 @@ pub fn edit_aisle(auth: &Auth, aisle_id: &AisleId, new_name: &str) -> Result<()>
 }
 
 pub fn delete_aisle(auth: &Auth, aisle_id: &AisleId) -> Result<()> {
-    let c = get_connection()?;
+    let c = db::get_connection()?;
     let aisle_key = aisle_key(&aisle_id);
     let aisle_owner = get_aisle_owner(&c, &aisle_id)?;
     db::verify_permission_auth(&c, &auth, &aisle_owner)?;
     let store_id = StoreId::new(c.hget(&aisle_key, AISLE_STORE)?);
     let aisle_in_store_key = aisles_in_store_key(&store_id);
-    redis::transaction(&c, &[&aisle_key, &aisle_in_store_key], |mut pipe| {
+    transaction(&c, &[&aisle_key, &aisle_in_store_key], |mut pipe| {
         db::products::transaction_purge_products_in_aisle(&c, &mut pipe, &aisle_id)?;
         pipe.srem(&aisle_in_store_key, **aisle_id)
             .ignore()
@@ -100,8 +104,8 @@ pub fn delete_aisle(auth: &Auth, aisle_id: &AisleId) -> Result<()> {
 }
 
 pub fn transaction_purge_aisles_in_store(
-    c: &redis::Connection,
-    mut pipe: &mut redis::Pipeline,
+    c: &Connection,
+    mut pipe: &mut Pipeline,
     store_id: &StoreId,
 ) -> Result<()> {
     let aisles_in_store_key = aisles_in_store_key(&store_id);
@@ -121,8 +125,8 @@ pub fn transaction_purge_aisles_in_store(
 }
 
 pub fn edit_aisle_sort_weight(
-    c: &redis::Connection,
-    pipe: &mut redis::Pipeline,
+    c: &Connection,
+    pipe: &mut Pipeline,
     auth: &Auth,
     data: &AisleItemWeight,
 ) -> Result<()> {
@@ -162,7 +166,7 @@ pub mod tests {
         assert_eq!(Ok(expected), save_aisle(&AUTH, &store_id, NAME));
 
         // check DB
-        let c = get_connection().unwrap();
+        let c = db::get_connection().unwrap();
         let key = aisle_key(&AisleId(1));
         let res: bool = c.exists(&key).unwrap();
         assert_eq!(true, res);
@@ -182,7 +186,7 @@ pub mod tests {
     fn edit_aisle_test() {
         save_aisle_test();
         assert_eq!(Ok(()), edit_aisle(&AUTH, &AisleId(1), RENAMED));
-        let c = get_connection().unwrap();
+        let c = db::get_connection().unwrap();
         let name: String = c.hget(&aisle_key(&AisleId(1)), AISLE_NAME).unwrap();
         assert_eq!(RENAMED, name.as_str());
     }
@@ -230,7 +234,7 @@ pub mod tests {
         save_aisle_test();
         add_2nd_aisle();
         fill_aisles();
-        let c = get_connection().unwrap();
+        let c = db::get_connection().unwrap();
         let res = get_aisles_in_store(&c, &StoreId::new(1));
         let expected = vec![
             Aisle::new(
@@ -276,7 +280,7 @@ pub mod tests {
         );
 
         assert_eq!(Ok(()), delete_aisle(&AUTH, &(AisleId(1))));
-        let c = get_connection().unwrap();
+        let c = db::get_connection().unwrap();
         assert_eq!(Ok(false), c.exists(&aisle_key(&AisleId(1))));
         assert_eq!(
             Ok(false),
@@ -284,11 +288,11 @@ pub mod tests {
         );
         assert_eq!(
             Ok(false),
-            c.exists(db::products::product_key(&ProductId(1)))
+            c.exists(&db::products::product_key(&ProductId(1)))
         );
         assert_eq!(
             Ok(false),
-            c.exists(db::products::product_key(&ProductId(2)))
+            c.exists(&db::products::product_key(&ProductId(2)))
         );
     }
 
@@ -299,7 +303,7 @@ pub mod tests {
         fill_aisles();
         let c = db::get_connection().unwrap();
         let aisle_in_store_key = aisles_in_store_key(&StoreId::new(1));
-        let mut pipe = redis::pipe();
+        let mut pipe = Pipeline::new();
         pipe.atomic();
         assert_eq!(
             Ok(()),
@@ -335,13 +339,13 @@ pub mod tests {
     fn edit_aisle_sort_weight_test() {
         save_aisle_test();
         let c = db::get_connection().unwrap();
-        let mut pipe = redis::pipe();
+        let mut pipe = Pipeline::new();
         pipe.atomic();
         assert_eq!(
             Ok(()),
             edit_aisle_sort_weight(&c, &mut pipe, &AUTH, &AisleItemWeight::new(1, 2.0f32))
         );
         assert_eq!(Ok(()), pipe.query(&c));
-        assert_eq!(Ok(2.0f32), c.hget(aisle_key(&AisleId(1)), AISLE_WEIGHT));
+        assert_eq!(Ok(2.0f32), c.hget(&aisle_key(&AisleId(1)), AISLE_WEIGHT));
     }
 }

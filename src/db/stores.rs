@@ -1,4 +1,8 @@
-use redis::{Commands, PipelineCommands};
+#[cfg(not(test))]
+use redis::{transaction, Commands, Connection, PipelineCommands};
+
+#[cfg(test)]
+use fake_redis::{transaction, FakeConnection as Connection};
 
 use crate::db;
 use crate::error::*;
@@ -16,7 +20,7 @@ fn user_stores_list_key(user_id: &UserId) -> String {
     format!("stores:{}", **user_id)
 }
 
-pub fn get_store_owner(c: &redis::Connection, store_id: &StoreId) -> Result<UserId> {
+pub fn get_store_owner(c: &Connection, store_id: &StoreId) -> Result<UserId> {
     Ok(UserId(c.hget(&store_key(&store_id), STORE_OWNER)?))
 }
 
@@ -38,7 +42,7 @@ pub fn save_store(auth: &Auth, name: &str) -> Result<StoreId> {
     let user_id = db::sessions::get_user_id(&c, &auth)?;
     let store_key = store_key(&store_id);
     let user_stores_key = user_stores_list_key(&user_id);
-    redis::transaction(&c, &[&store_key, &user_stores_key], |pipe| {
+    transaction(&c, &[&store_key, &user_stores_key], |pipe| {
         pipe.hset(&store_key, STORE_NAME, name)
             .ignore()
             .hset(&store_key, STORE_OWNER, *user_id)
@@ -79,7 +83,7 @@ pub fn delete_store(auth: &Auth, store_id: &StoreId) -> Result<()> {
     db::verify_permission_auth(&c, &auth, &owner_id)?;
     let store_key = store_key(&store_id);
     let user_stores_key = user_stores_list_key(&owner_id);
-    redis::transaction(&c, &[&store_key, &user_stores_key], |mut pipe| {
+    transaction(&c, &[&store_key, &user_stores_key], |mut pipe| {
         db::aisles::transaction_purge_aisles_in_store(&c, &mut pipe, &store_id)?;
         pipe.srem(&user_stores_key, **store_id)
             .ignore()

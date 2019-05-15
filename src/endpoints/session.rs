@@ -1,24 +1,9 @@
-use serde::Deserialize;
-
 use crate::db::{sessions, users};
 use crate::error::Result;
-use crate::token::Token;
 use crate::types::*;
 
-#[derive(Deserialize, Debug)]
-pub struct AuthInfo {
-    pub username: String,
-    pub password: String,
-}
-
-impl Drop for AuthInfo {
-    fn drop(&mut self) {
-        self.password.replace_range(..self.password.len(), "0");
-    }
-}
-
 pub fn login(auth_info: &AuthInfo) -> Result<Token> {
-    let (token, user_id) = users::verify_password(&auth_info)?;
+    let (token, user_id) = users::login(&auth_info)?;
     sessions::store_session(&token.session_token, &user_id)?;
     Ok(token)
 }

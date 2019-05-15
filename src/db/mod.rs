@@ -1,5 +1,10 @@
 use lazy_static::lazy_static;
+
+#[cfg(not(test))]
 use redis::{self, Client, Connection};
+
+#[cfg(test)]
+use fake_redis::{FakeCient as Client, FakeConnection as Connection};
 
 pub mod aisles;
 pub mod products;
@@ -21,10 +26,22 @@ lazy_static! {
     static ref DB_CLIENT: Client = get_client();
 }
 
+#[cfg(not(test))]
 fn get_client() -> Client {
     Client::open(SERVER_ADDR).expect("Error while creating redis client.")
 }
 
+#[cfg(test)]
+fn get_client() -> Client {
+    Client::open(SERVER_ADDR).expect("Error while creating redis client.")
+}
+
+#[cfg(not(test))]
+pub fn get_connection() -> redis::RedisResult<Connection> {
+    DB_CLIENT.get_connection()
+}
+
+#[cfg(test)]
 pub fn get_connection() -> redis::RedisResult<Connection> {
     DB_CLIENT.get_connection()
 }
@@ -51,6 +68,7 @@ mod tests {
 
     pub fn reset_db() {
         let c = get_connection().expect("should have connection");
-        let _: () = redis::cmd("FLUSHDB").query(&c).expect("error on flush");
+        c.reset();
+        //let _: () = redis::cmd("FLUSHDB").query(&c).expect("error on flush");
     }
 }

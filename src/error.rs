@@ -10,7 +10,6 @@ pub const USERNAME_TAKEN: StatusCode = StatusCode::NOT_ACCEPTABLE;
 pub const INVALID_USER_OR_PWD: StatusCode = StatusCode::BAD_REQUEST;
 pub const UNAUTHORISED: StatusCode = StatusCode::UNAUTHORIZED;
 pub const PERMISSION_DENIED: StatusCode = StatusCode::FORBIDDEN;
-pub const INVALID_PARAMS: StatusCode = StatusCode::PRECONDITION_FAILED;
 pub const INTERNAL_ERROR: StatusCode = StatusCode::INTERNAL_SERVER_ERROR;
 
 #[derive(Debug, Clone, Fail, Serialize, PartialEq)]

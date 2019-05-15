@@ -1,8 +1,10 @@
 use std::convert::From;
 
-use derive_more::Constructor;
-use redis::{self, Commands, PipelineCommands};
-use serde::Deserialize;
+#[cfg(not(test))]
+use redis::{self, transaction, Commands, Connection, Pipeline, PipelineCommands};
+
+#[cfg(test)]
+use fake_redis::{transaction, FakeConnection as Connection, FakePipeline as Pipeline};
 
 use crate::db;
 use crate::error::*;
@@ -17,24 +19,6 @@ const PROD_QTY: &str = "quantity";
 const PROD_UNIT: &str = "unit";
 const PROD_AISLE: &str = "aisle";
 
-#[derive(Constructor, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct EditProduct {
-    name: Option<String>,
-    quantity: Option<u32>,
-    unit: Option<Unit>,
-    is_done: Option<bool>,
-}
-
-impl EditProduct {
-    pub fn has_at_least_a_field(&self) -> bool {
-        self.name.is_some()
-            || self.quantity.is_some()
-            || self.unit.is_some()
-            || self.is_done.is_some()
-    }
-}
-
 pub fn product_key(id: &ProductId) -> String {
     format!("product:{}", **id)
 }
@@ -43,11 +27,11 @@ pub fn products_in_aisle_key(id: &AisleId) -> String {
     format!("products_in_aisle:{}", **id)
 }
 
-fn get_product_owner(c: &redis::Connection, id: &ProductId) -> Result<UserId> {
+fn get_product_owner(c: &Connection, id: &ProductId) -> Result<UserId> {
     Ok(UserId(c.hget(&product_key(&id), PROD_OWNER)?))
 }
 
-pub fn get_products_in_aisle(c: &redis::Connection, aisle_id: &AisleId) -> Result<Vec<Product>> {
+pub fn get_products_in_aisle(c: &Connection, aisle_id: &AisleId) -> Result<Vec<Product>> {
     let products: Vec<u32> = c.smembers(&products_in_aisle_key(&aisle_id))?;
     products
         .into_iter()
@@ -68,7 +52,7 @@ pub fn get_products_in_aisle(c: &redis::Connection, aisle_id: &AisleId) -> Resul
         .collect()
 }
 
-fn find_max_weight_in_aisle(c: &redis::Connection, aisle_id: &AisleId) -> Result<f32> {
+fn find_max_weight_in_aisle(c: &Connection, aisle_id: &AisleId) -> Result<f32> {
     let products = get_products_in_aisle(&c, &aisle_id)?;
     Ok(products.iter().max().map_or(0f32, |p| p.sort_weight))
 }
@@ -82,7 +66,7 @@ pub fn save_product(auth: &Auth, name: &str, aisle_id: &AisleId) -> Result<Produ
     let prod_key = product_key(&prod_id);
     let prod_in_aisle_key = products_in_aisle_key(&aisle_id);
     let new_sort_weight = find_max_weight_in_aisle(&c, &aisle_id)? + 1f32;
-    redis::transaction(&c, &[&prod_key, &prod_in_aisle_key], |pipe| {
+    transaction(&c, &[&prod_key, &prod_in_aisle_key], |pipe| {
         pipe.hset(&prod_key, PROD_NAME, name)
             .ignore()
             .hset(&prod_key, PROD_QTY, 1)
@@ -137,7 +121,7 @@ pub fn delete_product(auth: &Auth, product_id: &ProductId) -> Result<()> {
     let product_key = product_key(&product_id);
     let aisle_id = AisleId(c.hget(&product_key, PROD_AISLE)?);
     let prod_in_aisle_key = products_in_aisle_key(&aisle_id);
-    redis::transaction(&c, &[&product_key, &prod_in_aisle_key], |pipe| {
+    transaction(&c, &[&product_key, &prod_in_aisle_key], |pipe| {
         pipe.srem(&prod_in_aisle_key, **product_id)
             .ignore()
             .del(&product_key)
@@ -147,10 +131,10 @@ pub fn delete_product(auth: &Auth, product_id: &ProductId) -> Result<()> {
 }
 
 // purge all products contained in aisle
-// to be used only in a redis::transaction, doesn't execute the `pipe`
+// to be used only in a transaction, doesn't execute the `pipe`
 pub fn transaction_purge_products_in_aisle(
-    c: &redis::Connection,
-    pipe: &mut redis::Pipeline,
+    c: &Connection,
+    pipe: &mut Pipeline,
     aisle_id: &AisleId,
 ) -> Result<()> {
     let products_in_aisle_key = products_in_aisle_key(&aisle_id);
@@ -165,8 +149,8 @@ pub fn transaction_purge_products_in_aisle(
 }
 
 pub fn edit_product_sort_weight(
-    c: &redis::Connection,
-    pipe: &mut redis::Pipeline,
+    c: &Connection,
+    pipe: &mut Pipeline,
     auth: &Auth,
     data: &ProductItemWeight,
 ) -> Result<()> {
@@ -265,7 +249,7 @@ pub mod tests {
         save_product_test();
         add_2nd_product();
         let c = db::get_connection().unwrap();
-        let mut pipe = redis::pipe();
+        let mut pipe = Pipeline::new();
         pipe.atomic();
         let aisle_id = AisleId(1);
         assert_eq!(
@@ -282,7 +266,7 @@ pub mod tests {
     fn edit_product_sort_weight_test() {
         save_product_test();
         let c = db::get_connection().unwrap();
-        let mut pipe = redis::pipe();
+        let mut pipe = Pipeline::new();
         pipe.atomic();
         assert_eq!(
             Ok(()),
@@ -291,7 +275,7 @@ pub mod tests {
         assert_eq!(Ok(()), pipe.query(&c));
         assert_eq!(
             Ok(2.0f32),
-            c.hget(product_key(&ProductId(1)), PROD_SORT_WEIGHT)
+            c.hget(&product_key(&ProductId(1)), PROD_SORT_WEIGHT)
         );
     }
 }

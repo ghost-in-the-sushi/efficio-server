@@ -1,4 +1,5 @@
 use crate::db;
+use crate::endpoints::INVALID_PARAMS;
 use crate::error::*;
 use crate::types::*;
 
@@ -8,7 +9,7 @@ pub fn create_product(auth: String, aisle_id: u32, data: &NameData) -> Result<Pr
     db::products::save_product(&auth, &data.name, &AisleId(aisle_id))
 }
 
-pub fn edit_product(auth: String, product_id: u32, data: &db::products::EditProduct) -> Result<()> {
+pub fn edit_product(auth: String, product_id: u32, data: &EditProduct) -> Result<()> {
     let auth = Auth(&auth);
     db::sessions::validate_session(&auth)?;
     if !data.has_at_least_a_field() {

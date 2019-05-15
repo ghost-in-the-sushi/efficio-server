@@ -1,29 +1,14 @@
 use lazy_static::lazy_static;
 use regex::Regex;
-use serde::Deserialize;
 use validator;
 use zxcvbn;
 
 use crate::db;
-use crate::error::{self, Result, ServerError};
-use crate::token::Token;
+use crate::endpoints::INVALID_PARAMS;
+use crate::error::{Result, ServerError};
 use crate::types::*;
 
 const MIN_ENTROPY_SCORE: u8 = 2;
-
-#[derive(Default, Deserialize, Debug)]
-pub struct User {
-    pub username: String,
-    pub email: String,
-    pub password: String,
-}
-
-impl Drop for User {
-    fn drop(&mut self) {
-        self.password.replace_range(..self.password.len(), "0");
-        self.email.replace_range(..self.email.len(), "0");
-    }
-}
 
 pub fn create_user(user: &User) -> Result<Token> {
     validate_email(&user.email)?;
@@ -41,10 +26,7 @@ pub fn delete_user(auth: String) -> Result<()> {
 
 fn validate_email(mail: &str) -> Result<()> {
     if !validator::validate_email(mail) {
-        Err(ServerError::new(
-            error::INVALID_PARAMS,
-            "Email field is invalid",
-        ))
+        Err(ServerError::new(INVALID_PARAMS, "Email field is invalid"))
     } else {
         Ok(())
     }
@@ -52,11 +34,11 @@ fn validate_email(mail: &str) -> Result<()> {
 
 fn validate_password(user: &User) -> Result<()> {
     let entropy = zxcvbn::zxcvbn(&user.password, &[&user.username, &user.email])
-        .or_else(|_| Err(ServerError::new(error::INVALID_PARAMS, "Empty password")))?;
+        .or_else(|_| Err(ServerError::new(INVALID_PARAMS, "Empty password")))?;
 
     if entropy.score < MIN_ENTROPY_SCORE {
         Err(ServerError::new(
-            error::INVALID_PARAMS,
+            INVALID_PARAMS,
             &format!(
                 "Password field is too weak (score: {}): {}",
                 entropy.score.to_string(),
@@ -83,7 +65,7 @@ fn validate_username(username: &str) -> Result<()> {
     }
 
     if !VALID_USERNAME_RE.is_match(username) {
-        Err(ServerError::new(error::INVALID_PARAMS, "Invalid username"))
+        Err(ServerError::new(INVALID_PARAMS, "Invalid username"))
     } else {
         Ok(())
     }
