@@ -135,12 +135,10 @@ impl Ord for Aisle {
     fn cmp(&self, other: &Aisle) -> Ordering {
         if (self.sort_weight - other.sort_weight).abs() < std::f32::EPSILON {
             self.name.cmp(&other.name)
+        } else if self.sort_weight < other.sort_weight {
+            Ordering::Less
         } else {
-            if self.sort_weight < other.sort_weight {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            }
+            Ordering::Greater
         }
     }
 }
@@ -204,12 +202,10 @@ impl Ord for Product {
     fn cmp(&self, other: &Product) -> Ordering {
         if (self.sort_weight - other.sort_weight).abs() < std::f32::EPSILON {
             self.name.cmp(&other.name)
+        } else if self.sort_weight < other.sort_weight {
+            Ordering::Less
         } else {
-            if self.sort_weight < other.sort_weight {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            }
+            Ordering::Greater
         }
     }
 }

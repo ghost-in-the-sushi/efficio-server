@@ -32,7 +32,7 @@ impl From<RedisError> for ServerError {
         ServerError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             msg: err.description().to_string(),
-            source: err.source().map_or(None, |e| Some(e.to_string())),
+            source: err.source().and_then(|e| Some(e.to_string())),
         }
     }
 }
@@ -48,7 +48,7 @@ pub type Result<T> = std::result::Result<T, ServerError>;
 impl ServerError {
     pub fn new(status: StatusCode, msg: &str) -> Self {
         ServerError {
-            status: status,
+            status,
             msg: msg.to_owned(),
             source: None,
         }

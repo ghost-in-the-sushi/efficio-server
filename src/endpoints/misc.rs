@@ -44,7 +44,9 @@ pub fn change_sort_weight(
 pub fn nuke(db_client: &Client) -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
     if cfg!(debug_assertions) {
         let c = db_client.get_connection().expect("should have connection");
-        let _: () = redis::cmd("FLUSHDB").query(&c).expect("error on flush");
+        redis::cmd("FLUSHDB")
+            .query::<()>(&c)
+            .expect("error on flush");
         Ok(warp::reply())
     } else {
         Err(warp::reject::not_found())

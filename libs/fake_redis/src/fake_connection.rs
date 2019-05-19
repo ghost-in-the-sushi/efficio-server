@@ -1,3 +1,4 @@
+use std::clone::Clone;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -27,13 +28,13 @@ pub struct FakeConnection {
 impl FakeConnection {
     pub fn get<RV: FromRedisValue>(&self, key: &str) -> RedisResult<RV> {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
-        from_redis_value(&db.k.get(key).map_or_else(|| Value::Nil, |e| e.clone()))
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
+        from_redis_value(&db.k.get(key).map_or_else(|| Value::Nil, Clone::clone))
     }
 
     pub fn del<RV: FromRedisValue>(&self, key: &str) -> RedisResult<RV> {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         from_redis_value(&db.k.remove(&key.to_owned()).map_or_else(
             || {
                 db.h.remove(&key.to_owned()).map_or_else(
@@ -50,7 +51,7 @@ impl FakeConnection {
 
     pub fn exists<RV: FromRedisValue>(&self, key: &str) -> RedisResult<RV> {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         from_redis_value(&Value::Int(
             (db.k.contains_key(&key.to_owned())
                 || db.h.contains_key(&key.to_owned())
@@ -64,15 +65,16 @@ impl FakeConnection {
         delta: V,
     ) -> RedisResult<RV> {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         from_redis_value(
             &db.k
                 .entry(key.to_owned())
-                .and_modify(|e| match e {
-                    Value::Int(ref mut e) => *e += delta.into(),
-                    _ => (),
+                .and_modify(|e| {
+                    if let Value::Int(ref mut e) = e {
+                        *e += delta.into()
+                    }
                 })
-                .or_insert_with(|| Value::Int(0i64 + delta.into())),
+                .or_insert_with(|| Value::Int(delta.into())),
         )
     }
 
@@ -83,7 +85,7 @@ impl FakeConnection {
         value: V,
     ) -> RedisResult<RV> {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         let mut is_new = false;
         let v = value.to_redis_args();
         db.h.entry(key.to_owned())
@@ -111,7 +113,7 @@ impl FakeConnection {
         items: &[(&str, V)],
     ) -> RedisResult<RV> {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         for item in items {
             let field = item.0;
             let value = &item.1;
@@ -135,16 +137,16 @@ impl FakeConnection {
 
     pub fn hget<RV: FromRedisValue>(&self, key: &str, field: &str) -> RedisResult<RV> {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         from_redis_value(&db.h.get(key).map_or_else(
             || Value::Nil,
-            |h| h.get(field).map_or_else(|| Value::Nil, |e| e.clone()),
+            |h| h.get(field).map_or_else(|| Value::Nil, Clone::clone),
         ))
     }
 
     pub fn hdel<RV: FromRedisValue>(&self, key: &str, field: &str) -> RedisResult<RV> {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         let mut need_delete_key = false;
         let r = db.h.get_mut(key).map_or_else(
             || from_redis_value(&Value::Int(0)),
@@ -165,7 +167,7 @@ impl FakeConnection {
 
     pub fn hexists<RV: FromRedisValue>(&self, key: &str, field: &str) -> RedisResult<RV> {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         db.h.get(key).map_or_else(
             || from_redis_value(&Value::Int(false as i64)),
             |h| from_redis_value(&Value::Int(h.contains_key(field) as i64)),
@@ -197,7 +199,7 @@ impl FakeConnection {
         member: M,
     ) -> RedisResult<RV> {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         let mut need_delete_key = false;
         let v = member.to_redis_args();
         let r = db.s.get_mut(key).map_or_else(
@@ -223,7 +225,7 @@ impl FakeConnection {
 
     pub fn smembers<RV: FromRedisValue>(&self, key: &str) -> RedisResult<RV> {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         from_redis_value(
             &db.s
                 .get(key)
@@ -237,7 +239,7 @@ impl FakeConnection {
         member: M,
     ) -> RedisResult<RV> {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         let v = member.to_redis_args();
         db.s.get(key).map_or_else(
             || from_redis_value(&Value::Int(false as i64)),
@@ -259,18 +261,18 @@ pub struct FakePipeline {
 }
 
 impl FakePipeline {
-    pub fn del<'a>(&mut self, key: &str) -> &mut Self {
+    pub fn del(&mut self, key: &str) -> &mut Self {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         db.k.remove(&key.to_owned());
         db.h.remove(&key.to_owned());
         db.s.remove(&key.to_owned());
         self
     }
 
-    pub fn sadd<'a, M: ToRedisArgs>(&mut self, key: &str, member: M) -> &mut Self {
+    pub fn sadd<M: ToRedisArgs>(&mut self, key: &str, member: M) -> &mut Self {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         let v = member.to_redis_args();
         db.s.entry(key.to_owned())
             .and_modify(|h| h.push(Value::Data(v[0].clone())))
@@ -278,9 +280,9 @@ impl FakePipeline {
         self
     }
 
-    pub fn srem<'a, M: ToRedisArgs>(&mut self, key: &str, member: M) -> &mut Self {
+    pub fn srem<M: ToRedisArgs>(&mut self, key: &str, member: M) -> &mut Self {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         let mut need_delete_key = false;
         let v = member.to_redis_args();
         db.s.get_mut(key).map(|s| {
@@ -297,9 +299,9 @@ impl FakePipeline {
         self
     }
 
-    pub fn hset<'a, V: ToRedisArgs>(&mut self, key: &str, field: &str, value: V) -> &mut Self {
+    pub fn hset<V: ToRedisArgs>(&mut self, key: &str, field: &str, value: V) -> &mut Self {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         let v = value.to_redis_args();
         db.h.entry(key.to_owned())
             .and_modify(|h| {
@@ -317,14 +319,14 @@ impl FakePipeline {
         self
     }
 
-    pub fn hdel<'a>(&mut self, key: &str, field: &str) -> &mut Self {
+    pub fn hdel(&mut self, key: &str, field: &str) -> &mut Self {
         let mut pool = POOL.lock().unwrap();
-        let db = pool.entry(self.db).or_insert_with(|| Storages::new());
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
         let mut need_delete_key = false;
-        db.h.get_mut(key).map(|h| {
+        if let Some(h) = db.h.get_mut(key) {
             h.remove(field);
             need_delete_key = h.is_empty();
-        });
+        };
         if need_delete_key {
             db.h.remove(key);
         }
