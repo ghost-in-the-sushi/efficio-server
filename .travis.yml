@@ -23,13 +23,6 @@ matrix:
     rust: beta
   - env: TARGET=x86_64-unknown-linux-gnu
     rust: nightly
-
-  - env: COVERALLS=0.0.9
-    install:
-    - travis_wait cargo install cargo-travis --force --vers $COVERALLS
-    script:
-    - cmake --version
-    - cargo coverage || true
   - env: RUSTFMT
     rust: 1.34.2  # `stable`: Locking down for consistent behavior
     install:
