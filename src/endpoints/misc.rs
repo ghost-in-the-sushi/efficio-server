@@ -3,7 +3,17 @@ use crate::endpoints::INVALID_PARAMS;
 use crate::error;
 use crate::types::*;
 
-pub fn change_sort_weight(auth: String, data: &EditWeight) -> error::Result<()> {
+#[cfg(not(test))]
+use redis::Client;
+
+#[cfg(test)]
+use fake_redis::FakeCient as Client;
+
+pub fn change_sort_weight(
+    auth: String,
+    data: &EditWeight,
+    db_client: &Client,
+) -> error::Result<()> {
     if !data.has_at_least_a_field() {
         Err(error::ServerError::new(
             INVALID_PARAMS,
@@ -11,7 +21,7 @@ pub fn change_sort_weight(auth: String, data: &EditWeight) -> error::Result<()> 
         ))
     } else {
         let auth = Auth(&auth);
-        let c = db::get_connection()?;
+        let c = db_client.get_connection()?;
         let mut pipe = redis::pipe();
         pipe.atomic();
         if let Some(ref aisles) = data.aisles {
@@ -31,9 +41,9 @@ pub fn change_sort_weight(auth: String, data: &EditWeight) -> error::Result<()> 
 
 // Reset the DB, only available in debug compilation
 #[cfg(not(test))]
-pub fn nuke() -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
+pub fn nuke(db_client: &Client) -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
     if cfg!(debug_assertions) {
-        let c = db::get_connection().expect("should have connection");
+        let c = db_client.get_connection().expect("should have connection");
         let _: () = redis::cmd("FLUSHDB").query(&c).expect("error on flush");
         Ok(warp::reply())
     } else {
@@ -42,7 +52,7 @@ pub fn nuke() -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
 }
 
 #[cfg(test)]
-pub fn nuke() -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
+pub fn nuke(_: &Client) -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
     if false {
         Ok(warp::reply())
     } else {

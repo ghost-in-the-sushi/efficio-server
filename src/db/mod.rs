@@ -1,5 +1,3 @@
-use lazy_static::lazy_static;
-
 #[cfg(not(test))]
 use redis::{self, Client, Connection};
 
@@ -14,24 +12,9 @@ pub mod users;
 
 use crate::error::*;
 use crate::types::*;
-pub use users::save_user;
 
-#[cfg(debug_assertions)]
-const SERVER_ADDR: &str = "redis://127.0.0.1:6379/0";
-
-#[cfg(not(debug_assertions))]
-const SERVER_ADDR: &str = "redis://127.0.0.1:6379/8";
-
-lazy_static! {
-    static ref DB_CLIENT: Client = get_client();
-}
-
-fn get_client() -> Client {
-    Client::open(SERVER_ADDR).expect("Error while creating redis client.")
-}
-
-pub fn get_connection() -> redis::RedisResult<Connection> {
-    DB_CLIENT.get_connection()
+pub fn get_client(addr: &str) -> Client {
+    Client::open(addr).expect("Error while creating redis client.")
 }
 
 pub(crate) fn verify_permission(wanted_user_id: &UserId, user_id: &UserId) -> Result<()> {
@@ -52,11 +35,17 @@ pub(crate) fn verify_permission_auth(c: &Connection, auth: &Auth, user_id: &User
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    pub fn reset_db() {
-        let c = get_connection().expect("should have connection");
-        c.reset();
-        //let _: () = redis::cmd("FLUSHDB").query(&c).expect("error on flush");
+    use std::sync::atomic::{AtomicI64, Ordering};
+    static DB_NUM: AtomicI64 = AtomicI64::new(0);
+    pub fn get_db_addr() -> String {
+        format!(
+            "redis://127.0.0.1/{}",
+            DB_NUM.fetch_add(1, Ordering::SeqCst)
+        )
     }
+
+    // pub fn reset_db(c: &Connection) {
+    //     c.reset();
+    //     //let _: () = redis::cmd("FLUSHDB").query(&c).expect("error on flush");
+    // }
 }

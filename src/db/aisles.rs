@@ -48,8 +48,7 @@ fn find_max_weight_in_store(c: &Connection, store_id: &StoreId) -> Result<f32> {
     Ok(aisles.iter().max().map_or(0f32, |a| a.sort_weight))
 }
 
-pub fn save_aisle(auth: &Auth, store_id: &StoreId, name: &str) -> Result<Aisle> {
-    let c = db::get_connection()?;
+pub fn save_aisle(c: &Connection, auth: &Auth, store_id: &StoreId, name: &str) -> Result<Aisle> {
     let aisle_id = AisleId(c.incr(NEXT_AISLE_ID, 1)?);
     let aisle_key = aisle_key(&aisle_id);
     let aisle_in_store_key = aisles_in_store_key(&store_id);
@@ -57,7 +56,7 @@ pub fn save_aisle(auth: &Auth, store_id: &StoreId, name: &str) -> Result<Aisle> 
     let store_owner = db::stores::get_store_owner(&c, &store_id)?;
     db::verify_permission(&user_id, &store_owner)?;
     let new_sort_weight = find_max_weight_in_store(&c, &store_id)? + 1f32;
-    transaction(&c, &[&aisle_key, &aisle_in_store_key], |pipe| {
+    transaction(c, &[&aisle_key, &aisle_in_store_key], |pipe| {
         pipe.hset(&aisle_key, AISLE_NAME, name)
             .ignore()
             .hset(&aisle_key, AISLE_WEIGHT, new_sort_weight)
@@ -67,7 +66,7 @@ pub fn save_aisle(auth: &Auth, store_id: &StoreId, name: &str) -> Result<Aisle> 
             .hset(&aisle_key, AISLE_STORE, **store_id)
             .ignore()
             .sadd(&aisle_in_store_key, *aisle_id)
-            .query(&c)
+            .query(c)
     })?;
 
     Ok(Aisle::new(
@@ -78,27 +77,25 @@ pub fn save_aisle(auth: &Auth, store_id: &StoreId, name: &str) -> Result<Aisle> 
     ))
 }
 
-pub fn edit_aisle(auth: &Auth, aisle_id: &AisleId, new_name: &str) -> Result<()> {
-    let c = db::get_connection()?;
+pub fn edit_aisle(c: &Connection, auth: &Auth, aisle_id: &AisleId, new_name: &str) -> Result<()> {
     let aisle_key = aisle_key(&aisle_id);
     let aisle_owner = get_aisle_owner(&c, &aisle_id)?;
     db::verify_permission_auth(&c, &auth, &aisle_owner)?;
     Ok(c.hset(&aisle_key, AISLE_NAME, new_name)?)
 }
 
-pub fn delete_aisle(auth: &Auth, aisle_id: &AisleId) -> Result<()> {
-    let c = db::get_connection()?;
+pub fn delete_aisle(c: &Connection, auth: &Auth, aisle_id: &AisleId) -> Result<()> {
     let aisle_key = aisle_key(&aisle_id);
     let aisle_owner = get_aisle_owner(&c, &aisle_id)?;
     db::verify_permission_auth(&c, &auth, &aisle_owner)?;
     let store_id = StoreId::new(c.hget(&aisle_key, AISLE_STORE)?);
     let aisle_in_store_key = aisles_in_store_key(&store_id);
-    transaction(&c, &[&aisle_key, &aisle_in_store_key], |mut pipe| {
+    transaction(c, &[&aisle_key, &aisle_in_store_key], |mut pipe| {
         db::products::transaction_purge_products_in_aisle(&c, &mut pipe, &aisle_id)?;
         pipe.srem(&aisle_in_store_key, **aisle_id)
             .ignore()
             .del(&aisle_key)
-            .query(&c)
+            .query(c)
     })?;
     Ok(())
 }
@@ -143,8 +140,7 @@ pub fn edit_aisle_sort_weight(
 pub mod tests {
     use super::*;
     use crate::db;
-    use crate::db::stores::*;
-    use crate::db::{sessions::tests::*, users::tests::*};
+    use crate::db::{sessions::tests::*, stores::tests::*, tests::*};
 
     pub const NAME: &str = "Aisle1";
     const RENAMED: &str = "AisleRenamed";
@@ -157,53 +153,57 @@ pub mod tests {
         super::aisle_key(&aisle_id)
     }
 
-    // create a user, a session with AUTH as token, a store and an aisle
-    pub fn save_aisle_test() {
-        store_user_for_test_with_reset();
-        store_session_for_test(&AUTH);
-        let store_id = save_store(&AUTH, db::stores::tests::STORE_TEST_NAME).unwrap();
+    pub fn save_aisle_for_test(c: &Connection) -> StoreId {
+        let store_id = save_store_for_test(&c);
         let expected = Aisle::new(1, NAME.to_owned(), 0f32, vec![]);
-        assert_eq!(Ok(expected), save_aisle(&AUTH, &store_id, NAME));
+        assert_eq!(Ok(expected), save_aisle(&c, &AUTH, &store_id, NAME));
+        store_id
+    }
+
+    // create a user, a session with AUTH as token, a store and an aisle
+    #[test]
+    fn save_aisle_test() {
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+        let store_id = save_aisle_for_test(&c);
 
         // check DB
-        let c = db::get_connection().unwrap();
         let key = aisle_key(&AisleId(1));
-        let res: bool = c.exists(&key).unwrap();
-        assert_eq!(true, res);
-        let res: bool = c.exists(&aisles_in_store_key(&store_id)).unwrap();
-        assert_eq!(true, res);
-        let name: String = c.hget(&key, AISLE_NAME).unwrap();
-        assert_eq!(NAME, name.as_str());
+        assert_eq!(Ok(true), c.exists(&key));
+        assert_eq!(Ok(true), c.exists(&aisles_in_store_key(&store_id)));
+        assert_eq!(Ok(NAME.to_string()), c.hget(&key, AISLE_NAME));
         let weight: f32 = c.hget(&key, AISLE_WEIGHT).unwrap();
         assert!(weight - 1.0f32 < std::f32::EPSILON);
-        let aisle_store: u32 = c.hget(&key, AISLE_STORE).unwrap();
-        assert_eq!(1, aisle_store);
-        let res: bool = c.sismember(&aisles_in_store_key(&store_id), 1).unwrap();
-        assert_eq!(true, res);
+        assert_eq!(Ok(1u32), c.hget(&key, AISLE_STORE));
+        assert_eq!(Ok(true), c.sismember(&aisles_in_store_key(&store_id), 1));
     }
 
     #[test]
     fn edit_aisle_test() {
-        save_aisle_test();
-        assert_eq!(Ok(()), edit_aisle(&AUTH, &AisleId(1), RENAMED));
-        let c = db::get_connection().unwrap();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+        save_aisle_for_test(&c);
+        assert_eq!(Ok(()), edit_aisle(&c, &AUTH, &AisleId(1), RENAMED));
+
         let name: String = c.hget(&aisle_key(&AisleId(1)), AISLE_NAME).unwrap();
         assert_eq!(RENAMED, name.as_str());
     }
 
-    pub fn add_2nd_aisle() {
-        let c = db::get_connection().unwrap();
+    pub fn add_2nd_aisle(c: &Connection) {
         assert_eq!(Ok(false), c.exists(&aisle_key(&AisleId(2))));
         let expected = Aisle::new(2, RENAMED.to_owned(), 0f32, vec![]);
-        assert_eq!(Ok(expected), save_aisle(&AUTH, &StoreId::new(1), RENAMED));
+        assert_eq!(
+            Ok(expected),
+            save_aisle(&c, &AUTH, &StoreId::new(1), RENAMED)
+        );
         assert_eq!(Ok(true), c.exists(&aisle_key(&AisleId(2))));
     }
 
-    pub fn fill_aisles() {
-        db::products::save_product(&AUTH, "product1", &AisleId(1)).unwrap();
-        db::products::save_product(&AUTH, "product2", &AisleId(1)).unwrap();
-        db::products::save_product(&AUTH, "product3", &AisleId(2)).unwrap();
-        let c = db::get_connection().unwrap();
+    pub fn fill_aisles(c: &Connection) {
+        db::products::save_product(&c, &AUTH, "product1", &AisleId(1)).unwrap();
+        db::products::save_product(&c, &AUTH, "product2", &AisleId(1)).unwrap();
+        db::products::save_product(&c, &AUTH, "product3", &AisleId(2)).unwrap();
+
         assert_eq!(
             Ok(true),
             c.exists(&db::products::product_key(&ProductId(1)))
@@ -230,12 +230,11 @@ pub mod tests {
         );
     }
 
-    pub fn get_aisles_in_store_for_test() {
-        save_aisle_test();
-        add_2nd_aisle();
-        fill_aisles();
-        let c = db::get_connection().unwrap();
-        let res = get_aisles_in_store(&c, &StoreId::new(1));
+    pub fn get_aisles_in_store_for_test(c: &Connection) {
+        save_aisle_for_test(&c);
+        add_2nd_aisle(&c);
+        fill_aisles(&c);
+
         let expected = vec![
             Aisle::new(
                 1,
@@ -260,27 +259,32 @@ pub mod tests {
                 )],
             ),
         ];
-        assert_eq!(Ok(expected), res);
+        assert_eq!(Ok(expected), get_aisles_in_store(&c, &StoreId::new(1)));
     }
 
     #[test]
     fn get_aisles_in_store_test() {
-        get_aisles_in_store_for_test()
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+
+        get_aisles_in_store_for_test(&c)
     }
 
     #[test]
     fn delete_aisle_test() {
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+
         // this create a store, an aisle and put a product in it
-        db::products::tests::save_product_test();
+        db::products::tests::save_product_for_test(&c);
         // add another product
         let expected = Product::new(2, "product2".to_owned(), 1, false, Unit::Unit, 1f32);
         assert_eq!(
             Ok(expected),
-            db::products::save_product(&AUTH, "product2", &AisleId(1))
+            db::products::save_product(&c, &AUTH, "product2", &AisleId(1))
         );
 
-        assert_eq!(Ok(()), delete_aisle(&AUTH, &(AisleId(1))));
-        let c = db::get_connection().unwrap();
+        assert_eq!(Ok(()), delete_aisle(&c, &AUTH, &(AisleId(1))));
         assert_eq!(Ok(false), c.exists(&aisle_key(&AisleId(1))));
         assert_eq!(
             Ok(false),
@@ -298,12 +302,14 @@ pub mod tests {
 
     #[test]
     fn transaction_purge_aisles_test() {
-        save_aisle_test();
-        add_2nd_aisle();
-        fill_aisles();
-        let c = db::get_connection().unwrap();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+
+        save_aisle_for_test(&c);
+        add_2nd_aisle(&c);
+        fill_aisles(&c);
         let aisle_in_store_key = aisles_in_store_key(&StoreId::new(1));
-        let mut pipe = Pipeline::new();
+        let mut pipe = Pipeline::new(c.db);
         pipe.atomic();
         assert_eq!(
             Ok(()),
@@ -337,9 +343,11 @@ pub mod tests {
 
     #[test]
     fn edit_aisle_sort_weight_test() {
-        save_aisle_test();
-        let c = db::get_connection().unwrap();
-        let mut pipe = Pipeline::new();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+
+        save_aisle_for_test(&c);
+        let mut pipe = Pipeline::new(c.db);
         pipe.atomic();
         assert_eq!(
             Ok(()),

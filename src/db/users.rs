@@ -2,8 +2,10 @@ use argon2rs;
 use hex_view::HexView;
 use rand::{self, Rng};
 
+#[cfg(test)]
+use fake_redis::FakeConnection as Connection;
 #[cfg(not(test))]
-use redis::{self, Commands};
+use redis::{self, Commands, Connection};
 
 use crate::db;
 use crate::error::{self, Result, ServerError};
@@ -34,8 +36,7 @@ fn gen_auth(rng: &mut rand::rngs::ThreadRng) -> String {
     format!("{:x}", HexView::from(&auth))
 }
 
-pub fn save_user(user: &User) -> Result<Token> {
-    let c = db::get_connection()?;
+pub fn save_user(c: &Connection, user: &User) -> Result<Token> {
     let norm_username = user.username.to_lowercase();
     if c.hexists(USERS_LIST, &norm_username)? {
         Err(ServerError::new(
@@ -61,24 +62,22 @@ pub fn save_user(user: &User) -> Result<Token> {
         )?;
         c.hset(USERS_LIST, &norm_username, *user_id)?;
         let auth = gen_auth(&mut rng);
-        db::sessions::store_session(&auth, &user_id)?;
+        db::sessions::store_session(&c, &auth, &user_id)?;
         Ok(auth.into())
     }
 }
 
-pub fn delete_user(auth: &Auth) -> Result<()> {
-    let c = db::get_connection()?;
+pub fn delete_user(c: &Connection, auth: &Auth) -> Result<()> {
     let user_id = db::sessions::get_user_id(&c, auth)?;
     let user_key = user_key(&user_id);
     let username: String = c.hget(&user_key, USER_NAME)?;
-    db::stores::delete_all_user_stores(&auth)?;
+    db::stores::delete_all_user_stores(&c, &auth)?;
     c.hdel(USERS_LIST, &username.to_lowercase())?;
-    db::sessions::delete_all_user_sessions(auth)?;
+    db::sessions::delete_all_user_sessions(&c, auth)?;
     Ok(c.del(&user_key)?)
 }
 
-pub fn login(auth_info: &AuthInfo) -> Result<(Token, UserId)> {
-    let c = db::get_connection()?;
+pub fn login(c: &Connection, auth_info: &AuthInfo) -> Result<(Token, UserId)> {
     let user_id = UserId(
         c.hget(USERS_LIST, &auth_info.username.to_lowercase())
             .or_else(|_| {
@@ -116,9 +115,9 @@ pub mod tests {
         }
     }
 
-    pub fn store_user_for_test() -> Token {
+    pub fn store_user_for_test(c: &Connection) -> Token {
         let user = gen_user();
-        let res = save_user(&user);
+        let res = save_user(&c, &user);
         if res.is_err() {
             dbg!(&res);
         }
@@ -126,16 +125,17 @@ pub mod tests {
         res.unwrap()
     }
 
-    pub fn store_user_for_test_with_reset() -> Token {
-        reset_db();
-        store_user_for_test()
-    }
+    // pub fn store_user_for_test_with_reset() -> Token {
+    //     reset_db();
+    //     store_user_for_test()
+    // }
 
     #[test]
     fn store_user_test() {
-        let token = store_user_for_test_with_reset();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+        let token = store_user_for_test(&c);
         let user = gen_user();
-        let c = db::get_connection().unwrap();
         assert_eq!(Ok(true), c.exists("user:1"));
         assert_eq!(Ok(true), c.exists("sessions:1"));
         assert_eq!(Ok(true), c.sismember("sessions:1", token.session_token));
@@ -151,15 +151,17 @@ pub mod tests {
 
     #[test]
     fn store_user_exists_test() {
-        store_user_test();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+        store_user_for_test(&c);
         let mut user = gen_user();
-        let res = save_user(&user);
+        let res = save_user(&c, &user);
         if res.is_ok() {
             dbg!(&res);
         }
         assert_eq!(false, res.is_ok());
         user.username = "ToTo".to_string(); // username uniqueness should be case insensitive
-        let res = save_user(&user);
+        let res = save_user(&c, &user);
         if res.is_ok() {
             dbg!(&res);
         }
@@ -168,13 +170,15 @@ pub mod tests {
 
     #[test]
     fn login_test() {
-        store_user_test();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+        store_user_for_test(&c);
 
         let login_data = AuthInfo {
             username: "toto".to_string(),
             password: "pwd".to_string(),
         };
-        let res = login(&login_data);
+        let res = login(&c, &login_data);
         if res.is_err() {
             dbg!(&res);
         }
@@ -184,7 +188,7 @@ pub mod tests {
             username: "toto".to_string(),
             password: "pwdb".to_string(),
         };
-        let res = login(&login_data);
+        let res = login(&c, &login_data);
         if res.is_ok() {
             dbg!(&res);
         }
@@ -194,7 +198,7 @@ pub mod tests {
             username: "tato".to_string(),
             password: "pwd".to_string(),
         };
-        let res = login(&login_data);
+        let res = login(&c, &login_data);
         if res.is_ok() {
             dbg!(&res);
         }
@@ -203,24 +207,25 @@ pub mod tests {
 
     #[test]
     fn delete_user_test() {
-        let token = store_user_for_test_with_reset();
-        let c = db::get_connection().unwrap();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+        let token = store_user_for_test(&c);
         let auth = Auth(&token.session_token);
-        assert_eq!(Ok(()), delete_user(&auth));
+        assert_eq!(Ok(()), delete_user(&c, &auth));
         assert_eq!(Ok(false), c.exists(USERS_LIST));
         assert_eq!(Ok(false), c.exists("user:1"));
 
-        store_user_for_test(); // create toto user as user:2
+        store_user_for_test(&c); // create toto user as user:2
         let mut user = gen_user();
         user.username = "tata".to_string();
-        let res = save_user(&user); // create tata user as user:3
+        let res = save_user(&c, &user); // create tata user as user:3
         if res.is_err() {
             dbg!(&res);
         }
         assert_eq!(true, res.is_ok());
         let token = res.unwrap();
         let auth = Auth(&token.session_token);
-        assert_eq!(Ok(()), delete_user(&auth)); // delete tata
+        assert_eq!(Ok(()), delete_user(&c, &auth)); // delete tata
         assert_eq!(Ok(false), c.hexists(USERS_LIST, "tata"));
         assert_eq!(Ok(true), c.hexists(USERS_LIST, "toto"));
         assert_eq!(Ok(false), c.exists("user:1"));

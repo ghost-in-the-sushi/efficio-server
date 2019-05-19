@@ -3,6 +3,12 @@ use regex::Regex;
 use validator;
 use zxcvbn;
 
+#[cfg(not(test))]
+use redis::Client;
+
+#[cfg(test)]
+use fake_redis::FakeCient as Client;
+
 use crate::db;
 use crate::endpoints::INVALID_PARAMS;
 use crate::error::{Result, ServerError};
@@ -10,18 +16,19 @@ use crate::types::*;
 
 const MIN_ENTROPY_SCORE: u8 = 2;
 
-pub fn create_user(user: &User) -> Result<Token> {
+pub fn create_user(user: &User, db_client: &Client) -> Result<Token> {
     validate_email(&user.email)?;
     validate_password(&user)?;
     validate_username(&user.username)?;
-
-    db::save_user(&user)
+    let c = db_client.get_connection()?;
+    db::users::save_user(&c, &user)
 }
 
-pub fn delete_user(auth: String) -> Result<()> {
+pub fn delete_user(auth: String, db_client: &Client) -> Result<()> {
     let auth = Auth(&auth);
-    db::sessions::validate_session(&auth)?;
-    db::users::delete_user(&auth)
+    let c = db_client.get_connection()?;
+    db::sessions::validate_session(&c, &auth)?;
+    db::users::delete_user(&c, &auth)
 }
 
 fn validate_email(mail: &str) -> Result<()> {

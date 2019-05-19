@@ -1,24 +1,35 @@
 use failure::{self, Fail};
+use lazy_static::lazy_static;
 use warp::{self, path, Filter, Rejection, Reply};
 
+use crate::db;
 use crate::endpoints::*;
 use crate::error;
 use crate::types::*;
 
 const HEADER_AUTH: &str = "x-auth-token";
+#[cfg(debug_assertions)]
+const SERVER_ADDR: &str = "redis://127.0.0.1:6379/0";
+
+#[cfg(not(debug_assertions))]
+const SERVER_ADDR: &str = "redis://127.0.0.1:6379/8";
+
+lazy_static! {
+    static ref DB_CLIENT: redis::Client = db::get_client(SERVER_ADDR);
+}
 
 pub fn init_routes() {
     // POST /nuke
     let nuke = warp::path("nuke")
         .and(warp::path::end())
-        .and_then(|| misc::nuke());
+        .and_then(|| misc::nuke(&DB_CLIENT));
 
     // POST /user
     let create_user = warp::path("user")
         .and(warp::path::end())
         .and(warp::body::json())
         .and_then(|user: User| {
-            user::create_user(&user)
+            user::create_user(&user, &DB_CLIENT)
                 .and_then(|token| Ok(warp::reply::json(&token)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -27,8 +38,8 @@ pub fn init_routes() {
     let login = warp::path("login")
         .and(warp::path::end())
         .and(warp::body::json())
-        .and_then(|auth_info: AuthInfo| {
-            session::login(&auth_info)
+        .and_then(move |auth_info: AuthInfo| {
+            session::login(&auth_info, &DB_CLIENT)
                 .and_then(|token| Ok(warp::reply::json(&token)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -37,8 +48,8 @@ pub fn init_routes() {
     let logout = warp::path("logout")
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and_then(|auth| {
-            session::logout(auth)
+        .and_then(move |auth| {
+            session::logout(auth, &DB_CLIENT)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -47,8 +58,8 @@ pub fn init_routes() {
     let delete_user = warp::path("user")
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and_then(|auth| {
-            user::delete_user(auth)
+        .and_then(move |auth| {
+            user::delete_user(auth, &DB_CLIENT)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -58,8 +69,8 @@ pub fn init_routes() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(|auth, data: NameData| {
-            store::create_store(auth, &data)
+        .and_then(move |auth, data: NameData| {
+            store::create_store(auth, &data, &DB_CLIENT)
                 .and_then(|store_id| Ok(warp::reply::json(&store_id)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -69,8 +80,8 @@ pub fn init_routes() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(|id, auth, data: NameData| {
-            store::edit_store(auth, id, &data)
+        .and_then(move |id, auth, data: NameData| {
+            store::edit_store(auth, id, &data, &DB_CLIENT)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -80,8 +91,8 @@ pub fn init_routes() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(|store_id, auth, data: NameData| {
-            aisle::create_aisle(auth, store_id, &data)
+        .and_then(move |store_id, auth, data: NameData| {
+            aisle::create_aisle(auth, store_id, &data, &DB_CLIENT)
                 .and_then(|aisle| Ok(warp::reply::json(&aisle)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -91,8 +102,8 @@ pub fn init_routes() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(|aisle_id, auth, data: NameData| {
-            aisle::rename_aisle(auth, aisle_id, &data)
+        .and_then(move |aisle_id, auth, data: NameData| {
+            aisle::rename_aisle(auth, aisle_id, &data, &DB_CLIENT)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -102,8 +113,8 @@ pub fn init_routes() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(|aisle_id, auth, data: NameData| {
-            product::create_product(auth, aisle_id, &data)
+        .and_then(move |aisle_id, auth, data: NameData| {
+            product::create_product(auth, aisle_id, &data, &DB_CLIENT)
                 .and_then(|product| Ok(warp::reply::json(&product)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -113,8 +124,8 @@ pub fn init_routes() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(|product_id, auth, data: EditProduct| {
-            product::edit_product(auth, product_id, &data)
+        .and_then(move |product_id, auth, data: EditProduct| {
+            product::edit_product(auth, product_id, &data, &DB_CLIENT)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -123,8 +134,8 @@ pub fn init_routes() {
     let get_all_stores = warp::path("store")
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and_then(|auth| {
-            store::list_stores(auth)
+        .and_then(move |auth| {
+            store::list_stores(auth, &DB_CLIENT)
                 .and_then(|stores| Ok(warp::reply::json(&stores)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -133,8 +144,8 @@ pub fn init_routes() {
     let list_store = path!("store" / u32)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and_then(|store_id, auth| {
-            store::list_store(auth, store_id)
+        .and_then(move |store_id, auth| {
+            store::list_store(auth, store_id, &DB_CLIENT)
                 .and_then(|store| Ok(warp::reply::json(&store)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -143,8 +154,8 @@ pub fn init_routes() {
     let delete_product = path!("product" / u32)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and_then(|product_id, auth| {
-            product::delete_product(auth, product_id)
+        .and_then(move |product_id, auth| {
+            product::delete_product(auth, product_id, &DB_CLIENT)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -153,8 +164,8 @@ pub fn init_routes() {
     let delete_aisle = path!("aisle" / u32)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and_then(|aisle_id, auth| {
-            aisle::delete_aisle(auth, aisle_id)
+        .and_then(move |aisle_id, auth| {
+            aisle::delete_aisle(auth, aisle_id, &DB_CLIENT)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -163,8 +174,8 @@ pub fn init_routes() {
     let delete_store = path!("store" / u32)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and_then(|store_id, auth| {
-            store::delete_store(auth, store_id)
+        .and_then(move |store_id, auth| {
+            store::delete_store(auth, store_id, &DB_CLIENT)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -174,8 +185,8 @@ pub fn init_routes() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(|auth, data: EditWeight| {
-            misc::change_sort_weight(auth, &data)
+        .and_then(move |auth, data: EditWeight| {
+            misc::change_sort_weight(auth, &data, &DB_CLIENT)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -214,9 +225,9 @@ pub fn init_routes() {
         )
         .recover(customize_error);
 
+    let routes = get_routes.or(post_routes).or(put_routes).or(del_routes);
     println!("Efficio's ready for requests...");
-    warp::serve(get_routes.or(post_routes).or(put_routes).or(del_routes))
-        .run(([127, 0, 0, 1], 3030));
+    warp::serve(routes).run(([127, 0, 0, 1], 3030));
 }
 
 fn customize_error(err: Rejection) -> Result<impl Reply, Rejection> {

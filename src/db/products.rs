@@ -57,8 +57,12 @@ fn find_max_weight_in_aisle(c: &Connection, aisle_id: &AisleId) -> Result<f32> {
     Ok(products.iter().max().map_or(0f32, |p| p.sort_weight))
 }
 
-pub fn save_product(auth: &Auth, name: &str, aisle_id: &AisleId) -> Result<Product> {
-    let c = db::get_connection()?;
+pub fn save_product(
+    c: &Connection,
+    auth: &Auth,
+    name: &str,
+    aisle_id: &AisleId,
+) -> Result<Product> {
     let aisle_owner = db::aisles::get_aisle_owner(&c, &aisle_id)?;
     let user_id = db::sessions::get_user_id(&c, &auth)?;
     db::verify_permission(&user_id, &aisle_owner)?;
@@ -66,7 +70,7 @@ pub fn save_product(auth: &Auth, name: &str, aisle_id: &AisleId) -> Result<Produ
     let prod_key = product_key(&prod_id);
     let prod_in_aisle_key = products_in_aisle_key(&aisle_id);
     let new_sort_weight = find_max_weight_in_aisle(&c, &aisle_id)? + 1f32;
-    transaction(&c, &[&prod_key, &prod_in_aisle_key], |pipe| {
+    transaction(c, &[&prod_key, &prod_in_aisle_key], |pipe| {
         pipe.hset(&prod_key, PROD_NAME, name)
             .ignore()
             .hset(&prod_key, PROD_QTY, 1)
@@ -82,7 +86,7 @@ pub fn save_product(auth: &Auth, name: &str, aisle_id: &AisleId) -> Result<Produ
             .hset(&prod_key, PROD_AISLE, **aisle_id)
             .ignore()
             .sadd(&prod_in_aisle_key, *prod_id)
-            .query(&c)
+            .query(c)
     })?;
     Ok(Product::new(
         *prod_id,
@@ -94,8 +98,12 @@ pub fn save_product(auth: &Auth, name: &str, aisle_id: &AisleId) -> Result<Produ
     ))
 }
 
-pub fn modify_product(auth: &Auth, edit_data: &EditProduct, product_id: &ProductId) -> Result<()> {
-    let c = db::get_connection()?;
+pub fn modify_product(
+    c: &Connection,
+    auth: &Auth,
+    edit_data: &EditProduct,
+    product_id: &ProductId,
+) -> Result<()> {
     let product_owner = get_product_owner(&c, &product_id)?;
     db::verify_permission_auth(&c, &auth, &product_owner)?;
     let product_key = product_key(&product_id);
@@ -114,18 +122,17 @@ pub fn modify_product(auth: &Auth, edit_data: &EditProduct, product_id: &Product
     Ok(())
 }
 
-pub fn delete_product(auth: &Auth, product_id: &ProductId) -> Result<()> {
-    let c = db::get_connection()?;
+pub fn delete_product(c: &Connection, auth: &Auth, product_id: &ProductId) -> Result<()> {
     let product_owner = get_product_owner(&c, &product_id)?;
     db::verify_permission_auth(&c, &auth, &product_owner)?;
     let product_key = product_key(&product_id);
     let aisle_id = AisleId(c.hget(&product_key, PROD_AISLE)?);
     let prod_in_aisle_key = products_in_aisle_key(&aisle_id);
-    transaction(&c, &[&product_key, &prod_in_aisle_key], |pipe| {
+    transaction(c, &[&product_key, &prod_in_aisle_key], |pipe| {
         pipe.srem(&prod_in_aisle_key, **product_id)
             .ignore()
             .del(&product_key)
-            .query(&c)
+            .query(c)
     })?;
     Ok(())
 }
@@ -166,23 +173,29 @@ pub fn edit_product_sort_weight(
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::db;
     use crate::db::sessions::tests::*;
+    use crate::db::{self, tests::*};
 
     const NAME: &str = "product1";
     pub const RENAME: &str = "product2";
 
-    // create a store, a session with AUTH token, an aisle and put a product in it
-    pub fn save_product_test() {
-        db::users::tests::store_user_for_test_with_reset();
-        db::sessions::tests::store_session_for_test(&AUTH);
-        let store_id = db::stores::save_store(&AUTH, "MyStore").unwrap();
-        db::aisles::save_aisle(&AUTH, &store_id, db::aisles::tests::NAME).unwrap();
+    pub fn save_product_for_test(c: &Connection) {
+        db::users::tests::store_user_for_test(&c);
+        db::sessions::tests::store_session_for_test(&c, &AUTH);
+        let store_id = db::stores::save_store(&c, &AUTH, "MyStore").unwrap();
+        db::aisles::save_aisle(&c, &AUTH, &store_id, db::aisles::tests::NAME).unwrap();
         let expected = Product::new(1, "product1".to_owned(), 1, false, Unit::Unit, 1f32);
-        assert_eq!(Ok(expected), save_product(&AUTH, NAME, &AisleId(1)));
+        assert_eq!(Ok(expected), save_product(&c, &AUTH, NAME, &AisleId(1)));
+    }
+
+    // create a store, a session with AUTH token, an aisle and put a product in it
+    #[test]
+    fn save_product_test() {
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+        save_product_for_test(&c);
 
         // check DB
-        let c = db::get_connection().unwrap();
         let prod_key = product_key(&ProductId(1));
         let name: String = c.hget(&prod_key, PROD_NAME).unwrap();
         assert_eq!(NAME, &name);
@@ -198,19 +211,20 @@ pub mod tests {
         assert_eq!(true, res);
     }
 
-    fn add_2nd_product() {
+    fn add_2nd_product(c: &Connection) {
         let expected = Product::new(2, RENAME.to_owned(), 1, false, Unit::Unit, 0f32);
-        assert_eq!(Ok(expected), save_product(&AUTH, RENAME, &AisleId(1)));
+        assert_eq!(Ok(expected), save_product(&c, &AUTH, RENAME, &AisleId(1)));
     }
 
     #[test]
     fn modify_product_test() {
-        save_product_test();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+        save_product_for_test(&c);
         let data = EditProduct::new(Some(RENAME.to_owned()), Some(2), None, Some(true));
-        assert_eq!(Ok(()), modify_product(&AUTH, &data, &ProductId(1)));
+        assert_eq!(Ok(()), modify_product(&c, &AUTH, &data, &ProductId(1)));
 
         // check DB
-        let c = db::get_connection().unwrap();
         let product_key = product_key(&ProductId(1));
         let name: String = c.hget(&product_key, PROD_NAME).unwrap();
         assert_eq!(RENAME, &name);
@@ -225,9 +239,11 @@ pub mod tests {
 
     #[test]
     fn get_products_in_aisle_test() {
-        save_product_test();
-        add_2nd_product();
-        let c = db::get_connection().unwrap();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+
+        save_product_for_test(&c);
+        add_2nd_product(&c);
         let res = get_products_in_aisle(&c, &AisleId(1));
         let expected = vec![
             Product::new(1, NAME.to_owned(), 1, false, Unit::Unit, 0f32),
@@ -238,18 +254,22 @@ pub mod tests {
 
     #[test]
     fn delete_product_test() {
-        save_product_test();
-        assert_eq!(Ok(()), delete_product(&AUTH, &ProductId(1)));
-        let c = db::get_connection().unwrap();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+
+        save_product_for_test(&c);
+        assert_eq!(Ok(()), delete_product(&c, &AUTH, &ProductId(1)));
         assert_eq!(Ok(false), c.exists(&product_key(&ProductId(1))));
     }
 
     #[test]
     fn transaction_purge_products_in_aisle_test() {
-        save_product_test();
-        add_2nd_product();
-        let c = db::get_connection().unwrap();
-        let mut pipe = Pipeline::new();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+
+        save_product_for_test(&c);
+        add_2nd_product(&c);
+        let mut pipe = Pipeline::new(c.db);
         pipe.atomic();
         let aisle_id = AisleId(1);
         assert_eq!(
@@ -264,9 +284,10 @@ pub mod tests {
 
     #[test]
     fn edit_product_sort_weight_test() {
-        save_product_test();
-        let c = db::get_connection().unwrap();
-        let mut pipe = Pipeline::new();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+        save_product_for_test(&c);
+        let mut pipe = Pipeline::new(c.db);
         pipe.atomic();
         assert_eq!(
             Ok(()),

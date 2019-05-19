@@ -24,8 +24,7 @@ pub fn get_store_owner(c: &Connection, store_id: &StoreId) -> Result<UserId> {
     Ok(UserId(c.hget(&store_key(&store_id), STORE_OWNER)?))
 }
 
-pub fn list_store(auth: &Auth, store_id: &StoreId) -> Result<Store> {
-    let c = db::get_connection()?;
+pub fn list_store(c: &Connection, auth: &Auth, store_id: &StoreId) -> Result<Store> {
     let user_id = db::sessions::get_user_id(&c, &auth)?;
     let store_key = store_key(&store_id);
     db::verify_permission(&user_id, &get_store_owner(&c, &store_id)?)?;
@@ -36,33 +35,30 @@ pub fn list_store(auth: &Auth, store_id: &StoreId) -> Result<Store> {
     ))
 }
 
-pub fn save_store(auth: &Auth, name: &str) -> Result<StoreId> {
-    let c = db::get_connection()?;
+pub fn save_store(c: &Connection, auth: &Auth, name: &str) -> Result<StoreId> {
     let store_id = StoreId::new(c.incr(NEXT_STORE_ID, 1)?);
     let user_id = db::sessions::get_user_id(&c, &auth)?;
     let store_key = store_key(&store_id);
     let user_stores_key = user_stores_list_key(&user_id);
-    transaction(&c, &[&store_key, &user_stores_key], |pipe| {
+    transaction(c, &[&store_key, &user_stores_key], |pipe| {
         pipe.hset(&store_key, STORE_NAME, name)
             .ignore()
             .hset(&store_key, STORE_OWNER, *user_id)
             .ignore()
             .sadd(&user_stores_key, *store_id)
-            .query(&c)
+            .query(c)
     })?;
 
     Ok(store_id)
 }
 
-pub fn edit_store(auth: &Auth, store_id: &StoreId, new_name: &str) -> Result<()> {
-    let c = db::get_connection()?;
+pub fn edit_store(c: &Connection, auth: &Auth, store_id: &StoreId, new_name: &str) -> Result<()> {
     let owner_id = get_store_owner(&c, &store_id)?;
     db::verify_permission_auth(&c, &auth, &owner_id)?;
     Ok(c.hset(&store_key(&store_id), STORE_NAME, new_name)?)
 }
 
-pub fn get_all_stores(auth: &Auth) -> Result<Vec<StoreLight>> {
-    let c = db::get_connection()?;
+pub fn get_all_stores(c: &Connection, auth: &Auth) -> Result<Vec<StoreLight>> {
     let user_id = db::sessions::get_user_id(&c, &auth)?;
     let all_store_ids: Vec<u32> = c.smembers(&user_stores_list_key(&user_id))?;
     Ok(all_store_ids
@@ -76,31 +72,28 @@ pub fn get_all_stores(auth: &Auth) -> Result<Vec<StoreLight>> {
         .collect())
 }
 
-pub fn delete_store(auth: &Auth, store_id: &StoreId) -> Result<()> {
-    dbg!("delete_store");
-    let c = db::get_connection()?;
+pub fn delete_store(c: &Connection, auth: &Auth, store_id: &StoreId) -> Result<()> {
     let owner_id = get_store_owner(&c, &store_id)?;
     db::verify_permission_auth(&c, &auth, &owner_id)?;
     let store_key = store_key(&store_id);
     let user_stores_key = user_stores_list_key(&owner_id);
-    transaction(&c, &[&store_key, &user_stores_key], |mut pipe| {
+    transaction(c, &[&store_key, &user_stores_key], |mut pipe| {
         db::aisles::transaction_purge_aisles_in_store(&c, &mut pipe, &store_id)?;
         pipe.srem(&user_stores_key, **store_id)
             .ignore()
             .del(&store_key)
-            .query(&c)
+            .query(c)
     })?;
     Ok(())
 }
 
-pub fn delete_all_user_stores(auth: &Auth) -> Result<()> {
-    let c = db::get_connection()?;
+pub fn delete_all_user_stores(c: &Connection, auth: &Auth) -> Result<()> {
     let user_id = db::sessions::get_user_id(&c, &auth)?;
     let user_stores_key = user_stores_list_key(&user_id);
     let stores: Option<Vec<u32>> = c.smembers(&user_stores_key)?;
     if let Some(stores) = stores {
         for store_id in stores {
-            delete_store(&auth, &StoreId::new(store_id))?;
+            delete_store(&c, &auth, &StoreId::new(store_id))?;
         }
     }
     Ok(())
@@ -110,18 +103,25 @@ pub fn delete_all_user_stores(auth: &Auth) -> Result<()> {
 pub mod tests {
     use super::*;
     use db::sessions::tests::*;
+    use db::tests::*;
     use db::users::tests::*;
 
     pub const STORE_TEST_NAME: &str = "storetest";
     const NEW_STORE_NAME: &str = "new_store_name";
 
+    pub fn save_store_for_test(c: &Connection) -> StoreId {
+        store_user_for_test(&c);
+        store_session_for_test(&c, &AUTH);
+        let res = save_store(&c, &AUTH, STORE_TEST_NAME);
+        assert_eq!(Ok(StoreId::new(1)), res);
+        res.unwrap()
+    }
+
     #[test]
     fn save_store_test() {
-        store_user_for_test_with_reset();
-        store_session_for_test(&AUTH);
-        assert_eq!(Ok(StoreId::new(1)), save_store(&AUTH, STORE_TEST_NAME));
-
-        let c = db::get_connection().unwrap();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+        save_store_for_test(&c);
         let store_key = store_key(&StoreId::new(1));
         let res: bool = c.exists(&store_key).unwrap();
         assert_eq!(true, res);
@@ -138,9 +138,13 @@ pub mod tests {
 
     #[test]
     fn edit_store_test() {
-        save_store_test();
-        assert_eq!(Ok(()), edit_store(&AUTH, &StoreId::new(1), NEW_STORE_NAME));
-        let c = db::get_connection().unwrap();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+        save_store_for_test(&c);
+        assert_eq!(
+            Ok(()),
+            edit_store(&c, &AUTH, &StoreId::new(1), NEW_STORE_NAME)
+        );
         let store_key = store_key(&StoreId::new(1));
         let store_name: String = c.hget(&store_key, STORE_NAME).unwrap();
         assert_eq!(NEW_STORE_NAME, &store_name);
@@ -148,18 +152,22 @@ pub mod tests {
 
     #[test]
     fn get_all_stores_test() {
-        save_store_test();
-        assert_eq!(Ok(StoreId::new(2)), save_store(&AUTH, NEW_STORE_NAME));
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+        save_store_for_test(&c);
+        assert_eq!(Ok(StoreId::new(2)), save_store(&c, &AUTH, NEW_STORE_NAME));
         let expected_stores = vec![
             StoreLight::new(STORE_TEST_NAME.to_owned(), 1),
             StoreLight::new(NEW_STORE_NAME.to_owned(), 2),
         ];
-        assert_eq!(Ok(expected_stores), get_all_stores(&AUTH));
+        assert_eq!(Ok(expected_stores), get_all_stores(&c, &AUTH));
     }
 
     #[test]
     fn list_store_test() {
-        db::aisles::tests::get_aisles_in_store_for_test();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+        db::aisles::tests::get_aisles_in_store_for_test(&c);
         let expected = Store::new(
             1,
             STORE_TEST_NAME.to_owned(),
@@ -188,16 +196,18 @@ pub mod tests {
                 ),
             ],
         );
-        assert_eq!(Ok(expected), list_store(&AUTH, &StoreId::new(1)));
+        assert_eq!(Ok(expected), list_store(&c, &AUTH, &StoreId::new(1)));
     }
 
     #[test]
     fn delete_store_test() {
-        db::aisles::tests::save_aisle_test();
-        db::aisles::tests::add_2nd_aisle();
-        db::aisles::tests::fill_aisles();
-        assert_eq!(Ok(()), delete_store(&AUTH, &StoreId::new(1)));
-        let c = db::get_connection().unwrap();
+        let client = db::get_client(&get_db_addr());
+        let c = client.get_connection().unwrap();
+
+        db::aisles::tests::save_aisle_for_test(&c);
+        db::aisles::tests::add_2nd_aisle(&c);
+        db::aisles::tests::fill_aisles(&c);
+        assert_eq!(Ok(()), delete_store(&c, &AUTH, &StoreId::new(1)));
         assert_eq!(
             Ok(false),
             c.sismember(&user_stores_list_key(&UserId(1)), 1u32)
