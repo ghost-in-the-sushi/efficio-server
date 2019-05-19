@@ -14,6 +14,10 @@ matrix:
   - env: TARGET=x86_64-apple-darwin
     os: osx
 
+  # Windows
+  - env: TARGET=x86_64-pc-windows-msvc
+    os: windows
+
   # Testing other channels
   - env: TARGET=x86_64-unknown-linux-gnu
     rust: beta
