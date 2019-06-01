@@ -4,10 +4,10 @@ use validator;
 use zxcvbn;
 
 #[cfg(not(test))]
-use redis::Client;
+use redis::Connection;
 
 #[cfg(test)]
-use fake_redis::FakeCient as Client;
+use fake_redis::FakeConnection as Connection;
 
 use crate::db;
 use crate::endpoints::INVALID_PARAMS;
@@ -16,17 +16,15 @@ use crate::types::*;
 
 const MIN_ENTROPY_SCORE: u8 = 2;
 
-pub fn create_user(user: &User, db_client: &Client) -> Result<Token> {
+pub fn create_user(user: &User, c: &Connection) -> Result<Token> {
     validate_email(&user.email)?;
     validate_password(&user)?;
     validate_username(&user.username)?;
-    let c = db_client.get_connection()?;
     db::users::save_user(&c, &user)
 }
 
-pub fn delete_user(auth: String, db_client: &Client) -> Result<()> {
+pub fn delete_user(auth: String, c: &Connection) -> Result<()> {
     let auth = Auth(&auth);
-    let c = db_client.get_connection()?;
     db::sessions::validate_session(&c, &auth)?;
     db::users::delete_user(&c, &auth)
 }

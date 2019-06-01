@@ -5,6 +5,7 @@ authors = ["Geobert Quach <geobert@protonmail.com>"]
 edition = "2018"
 
 [dependencies]
+fake_redis = { path = "libs/fake_redis" }
 warp = "0.1.15"
 structopt = "0.2.15"
 redis = "0.10.0"
@@ -22,5 +23,11 @@ zxcvbn = "1.0.1"
 regex = "1.1.6"
 derive_deref = "1.0.2"
 derive-new = "0.5.6"
+r2d2 = "0.8.4"
+r2d2_redis = "0.9.0"
+log = "0.4.6"
+pretty_env_logger = "0.3.0"
 
-fake_redis = { path = "libs/fake_redis" }
+
+
+

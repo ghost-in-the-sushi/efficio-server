@@ -106,6 +106,7 @@ pub fn login(c: &Connection, auth_info: &AuthInfo) -> Result<(Token, UserId)> {
 pub mod tests {
     use super::*;
     use crate::db::tests::*;
+    use fake_redis::FakeCient as Client;
 
     pub fn gen_user() -> User {
         User {
@@ -132,7 +133,7 @@ pub mod tests {
 
     #[test]
     fn store_user_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         let token = store_user_for_test(&c);
         let user = gen_user();
@@ -151,7 +152,7 @@ pub mod tests {
 
     #[test]
     fn store_user_exists_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         store_user_for_test(&c);
         let mut user = gen_user();
@@ -170,7 +171,7 @@ pub mod tests {
 
     #[test]
     fn login_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         store_user_for_test(&c);
 
@@ -207,7 +208,7 @@ pub mod tests {
 
     #[test]
     fn delete_user_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         let token = store_user_for_test(&c);
         let auth = Auth(&token.session_token);

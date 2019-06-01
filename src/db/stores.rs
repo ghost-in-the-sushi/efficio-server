@@ -105,6 +105,7 @@ pub mod tests {
     use db::sessions::tests::*;
     use db::tests::*;
     use db::users::tests::*;
+    use fake_redis::FakeCient as Client;
 
     pub const STORE_TEST_NAME: &str = "storetest";
     const NEW_STORE_NAME: &str = "new_store_name";
@@ -119,7 +120,7 @@ pub mod tests {
 
     #[test]
     fn save_store_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         save_store_for_test(&c);
         let store_key = store_key(&StoreId::new(1));
@@ -138,7 +139,7 @@ pub mod tests {
 
     #[test]
     fn edit_store_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         save_store_for_test(&c);
         assert_eq!(
@@ -152,7 +153,7 @@ pub mod tests {
 
     #[test]
     fn get_all_stores_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         save_store_for_test(&c);
         assert_eq!(Ok(StoreId::new(2)), save_store(&c, &AUTH, NEW_STORE_NAME));
@@ -165,7 +166,7 @@ pub mod tests {
 
     #[test]
     fn list_store_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         db::aisles::tests::get_aisles_in_store_for_test(&c);
         let expected = Store::new(
@@ -201,7 +202,7 @@ pub mod tests {
 
     #[test]
     fn delete_store_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
 
         db::aisles::tests::save_aisle_for_test(&c);

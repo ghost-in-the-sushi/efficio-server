@@ -141,6 +141,7 @@ pub mod tests {
     use super::*;
     use crate::db;
     use crate::db::{sessions::tests::*, stores::tests::*, tests::*};
+    use fake_redis::FakeCient as Client;
 
     pub const NAME: &str = "Aisle1";
     const RENAMED: &str = "AisleRenamed";
@@ -163,7 +164,7 @@ pub mod tests {
     // create a user, a session with AUTH as token, a store and an aisle
     #[test]
     fn save_aisle_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         let store_id = save_aisle_for_test(&c);
 
@@ -180,7 +181,7 @@ pub mod tests {
 
     #[test]
     fn edit_aisle_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         save_aisle_for_test(&c);
         assert_eq!(Ok(()), edit_aisle(&c, &AUTH, &AisleId(1), RENAMED));
@@ -264,7 +265,7 @@ pub mod tests {
 
     #[test]
     fn get_aisles_in_store_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
 
         get_aisles_in_store_for_test(&c)
@@ -272,7 +273,7 @@ pub mod tests {
 
     #[test]
     fn delete_aisle_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
 
         // this create a store, an aisle and put a product in it
@@ -302,7 +303,7 @@ pub mod tests {
 
     #[test]
     fn transaction_purge_aisles_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
 
         save_aisle_for_test(&c);
@@ -343,7 +344,7 @@ pub mod tests {
 
     #[test]
     fn edit_aisle_sort_weight_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
 
         save_aisle_for_test(&c);

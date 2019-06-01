@@ -175,6 +175,7 @@ pub mod tests {
     use super::*;
     use crate::db::sessions::tests::*;
     use crate::db::{self, tests::*};
+    use fake_redis::FakeCient as Client;
 
     const NAME: &str = "product1";
     pub const RENAME: &str = "product2";
@@ -191,7 +192,7 @@ pub mod tests {
     // create a store, a session with AUTH token, an aisle and put a product in it
     #[test]
     fn save_product_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         save_product_for_test(&c);
 
@@ -218,7 +219,7 @@ pub mod tests {
 
     #[test]
     fn modify_product_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         save_product_for_test(&c);
         let data = EditProduct::new(Some(RENAME.to_owned()), Some(2), None, Some(true));
@@ -239,7 +240,7 @@ pub mod tests {
 
     #[test]
     fn get_products_in_aisle_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
 
         save_product_for_test(&c);
@@ -254,7 +255,7 @@ pub mod tests {
 
     #[test]
     fn delete_product_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
 
         save_product_for_test(&c);
@@ -264,7 +265,7 @@ pub mod tests {
 
     #[test]
     fn transaction_purge_products_in_aisle_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
 
         save_product_for_test(&c);
@@ -284,7 +285,7 @@ pub mod tests {
 
     #[test]
     fn edit_product_sort_weight_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         save_product_for_test(&c);
         let mut pipe = Pipeline::new(c.db);

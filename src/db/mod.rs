@@ -1,8 +1,8 @@
 #[cfg(not(test))]
-use redis::{self, Client, Connection};
+use redis::{self, Connection};
 
 #[cfg(test)]
-use fake_redis::{FakeCient as Client, FakeConnection as Connection};
+use fake_redis::FakeConnection as Connection;
 
 pub mod aisles;
 pub mod products;
@@ -12,10 +12,6 @@ pub mod users;
 
 use crate::error::*;
 use crate::types::*;
-
-pub fn get_client(addr: &str) -> Client {
-    Client::open(addr).expect("Error while creating redis client.")
-}
 
 pub(crate) fn verify_permission(wanted_user_id: &UserId, user_id: &UserId) -> Result<()> {
     if wanted_user_id != user_id {

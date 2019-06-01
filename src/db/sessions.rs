@@ -84,7 +84,8 @@ pub fn delete_all_user_sessions(c: &Connection, auth: &Auth) -> Result<()> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::db::{self, tests::*};
+    use crate::db::tests::*;
+    use fake_redis::FakeCient as Client;
 
     pub const AUTH: Auth = Auth("tokenauth");
     pub const AUTH2: Auth = Auth("anothertokenauth");
@@ -112,7 +113,7 @@ pub mod tests {
 
     #[test]
     fn validate_session_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         store_session_for_test(&c, &AUTH);
         assert_eq!(Ok(()), validate_session(&c, &AUTH));
@@ -133,7 +134,7 @@ pub mod tests {
 
     #[test]
     fn get_user_id_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         store_session_for_test(&c, &AUTH);
         assert_eq!(Ok(UserId(1)), get_user_id(&c, &AUTH));
@@ -143,7 +144,7 @@ pub mod tests {
 
     #[test]
     fn delete_session_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         store_session_for_test(&c, &AUTH);
         assert_eq!(Ok(()), delete_session(&c, &AUTH));
@@ -153,7 +154,7 @@ pub mod tests {
 
     #[test]
     fn delete_all_user_sessions_test() {
-        let client = db::get_client(&get_db_addr());
+        let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         store_session_for_test(&c, &AUTH);
         assert_eq!(Ok(()), store_session(&c, "AUTH2", &UserId(1)));

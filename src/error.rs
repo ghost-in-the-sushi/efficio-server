@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt::Display;
 
 use failure::Fail;
+use r2d2;
 use redis::RedisError;
 use serde::Serialize;
 use warp::http::StatusCode;
@@ -30,7 +31,7 @@ impl Display for ServerError {
 impl From<RedisError> for ServerError {
     fn from(err: RedisError) -> Self {
         ServerError {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
+            status: INTERNAL_ERROR,
             msg: err.description().to_string(),
             source: err.source().and_then(|e| Some(e.to_string())),
         }
@@ -40,6 +41,16 @@ impl From<RedisError> for ServerError {
 impl From<ServerError> for RedisError {
     fn from(err: ServerError) -> Self {
         (redis::ErrorKind::ExtensionError, "", err.msg).into()
+    }
+}
+
+impl From<r2d2::Error> for ServerError {
+    fn from(err: r2d2::Error) -> Self {
+        ServerError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: err.description().to_string(),
+            source: err.source().and_then(|e| Some(e.to_string())),
+        }
     }
 }
 

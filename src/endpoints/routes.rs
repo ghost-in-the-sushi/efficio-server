@@ -1,35 +1,59 @@
 use failure::{self, Fail};
-use lazy_static::lazy_static;
-use warp::{self, path, Filter, Rejection, Reply};
+use log::*;
 
-use crate::db;
+
+use crate::cli::*;
 use crate::endpoints::*;
 use crate::error;
 use crate::types::*;
-
+use r2d2_redis::RedisConnectionManager;
+use warp::{self, path, Filter, Rejection, Reply};
 const HEADER_AUTH: &str = "x-auth-token";
-#[cfg(debug_assertions)]
-const SERVER_ADDR: &str = "redis://127.0.0.1:6379/0";
+const DEFAULT_DB_PORT: u32 = 6379;
+const DEFAULT_DB_HOST: &str = "redis://127.0.0.1";
 
-#[cfg(not(debug_assertions))]
-const SERVER_ADDR: &str = "redis://127.0.0.1:6379/8";
+type PooledConnection = r2d2::PooledConnection<r2d2_redis::RedisConnectionManager>;
 
-lazy_static! {
-    static ref DB_CLIENT: redis::Client = db::get_client(SERVER_ADDR);
-}
+pub fn start_server(opt: &Opt) -> error::Result<()> {
+    let db_host = if let Some(ref host) = opt.db_host {
+        host
+    } else {
+        DEFAULT_DB_HOST
+    };
+    let db_port = if let Some(port) = opt.db_port {
+        port
+    } else {
+        DEFAULT_DB_PORT
+    };
+    let db_num = if cfg!(debug_assertions) { 0 } else { 1 };
+    let redis_addr = format!("{}:{}/{}", db_host, db_port, db_num);
 
-pub fn init_routes() {
+    info!("DB address: {}", redis_addr);
+    let manager = RedisConnectionManager::new(redis_addr.as_str())?;
+    debug!("Creating db connection pool");
+    let pool = r2d2::Pool::builder().max_size(15).build(manager)?;
+
+    let s = warp::any()
+        .and_then(move || match pool.get() {
+            Ok(c) => Ok(c),
+            Err(e) => Err(warp::reject::custom(e)),
+        })
+        .boxed();
+    let s = move || s.clone();
+
     // POST /nuke
     let nuke = warp::path("nuke")
         .and(warp::path::end())
-        .and_then(|| misc::nuke(&DB_CLIENT));
+        .and(s())
+        .and_then(move |c: PooledConnection| misc::nuke(&*c));
 
     // POST /user
     let create_user = warp::path("user")
         .and(warp::path::end())
         .and(warp::body::json())
-        .and_then(|user: User| {
-            user::create_user(&user, &DB_CLIENT)
+        .and(s())
+        .and_then(move |user: User, c: PooledConnection| {
+            user::create_user(&user, &*c)
                 .and_then(|token| Ok(warp::reply::json(&token)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -38,8 +62,9 @@ pub fn init_routes() {
     let login = warp::path("login")
         .and(warp::path::end())
         .and(warp::body::json())
-        .and_then(move |auth_info: AuthInfo| {
-            session::login(&auth_info, &DB_CLIENT)
+        .and(s())
+        .and_then(move |auth_info: AuthInfo, c: PooledConnection| {
+            session::login(&auth_info, &*c)
                 .and_then(|token| Ok(warp::reply::json(&token)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -48,8 +73,9 @@ pub fn init_routes() {
     let logout = warp::path("logout")
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and_then(move |auth| {
-            session::logout(auth, &DB_CLIENT)
+        .and(s())
+        .and_then(move |auth: String, c: PooledConnection| {
+            session::logout(auth, &*c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -58,8 +84,9 @@ pub fn init_routes() {
     let delete_user = warp::path("user")
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and_then(move |auth| {
-            user::delete_user(auth, &DB_CLIENT)
+        .and(s())
+        .and_then(move |auth: String, c: PooledConnection| {
+            user::delete_user(auth, &*c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -69,8 +96,9 @@ pub fn init_routes() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(move |auth, data: NameData| {
-            store::create_store(auth, &data, &DB_CLIENT)
+        .and(s())
+        .and_then(move |auth, data: NameData, c: PooledConnection| {
+            store::create_store(auth, &data, &*c)
                 .and_then(|store_id| Ok(warp::reply::json(&store_id)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -80,8 +108,9 @@ pub fn init_routes() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(move |id, auth, data: NameData| {
-            store::edit_store(auth, id, &data, &DB_CLIENT)
+        .and(s())
+        .and_then(move |id, auth, data: NameData, c: PooledConnection| {
+            store::edit_store(auth, id, &data, &*c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -91,8 +120,9 @@ pub fn init_routes() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(move |store_id, auth, data: NameData| {
-            aisle::create_aisle(auth, store_id, &data, &DB_CLIENT)
+        .and(s())
+        .and_then(move |store_id, auth, data: NameData, c: PooledConnection| {
+            aisle::create_aisle(auth, store_id, &data, &*c)
                 .and_then(|aisle| Ok(warp::reply::json(&aisle)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -102,8 +132,9 @@ pub fn init_routes() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(move |aisle_id, auth, data: NameData| {
-            aisle::rename_aisle(auth, aisle_id, &data, &DB_CLIENT)
+        .and(s())
+        .and_then(move |aisle_id, auth, data: NameData, c: PooledConnection| {
+            aisle::rename_aisle(auth, aisle_id, &data, &*c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -113,8 +144,9 @@ pub fn init_routes() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(move |aisle_id, auth, data: NameData| {
-            product::create_product(auth, aisle_id, &data, &DB_CLIENT)
+        .and(s())
+        .and_then(move |aisle_id, auth, data: NameData, c: PooledConnection| {
+            product::create_product(auth, aisle_id, &data, &*c)
                 .and_then(|product| Ok(warp::reply::json(&product)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -124,18 +156,22 @@ pub fn init_routes() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(move |product_id, auth, data: EditProduct| {
-            product::edit_product(auth, product_id, &data, &DB_CLIENT)
-                .and_then(|()| Ok(warp::reply()))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
-        });
+        .and(s())
+        .and_then(
+            move |product_id, auth, data: EditProduct, c: PooledConnection| {
+                product::edit_product(auth, product_id, &data, &*c)
+                    .and_then(|()| Ok(warp::reply()))
+                    .or_else(|e| Err(warp::reject::custom(e.compat())))
+            },
+        );
 
     // GET /store
     let get_all_stores = warp::path("store")
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and_then(move |auth| {
-            store::list_stores(auth, &DB_CLIENT)
+        .and(s())
+        .and_then(move |auth, c: PooledConnection| {
+            store::list_stores(auth, &*c)
                 .and_then(|stores| Ok(warp::reply::json(&stores)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -144,8 +180,9 @@ pub fn init_routes() {
     let list_store = path!("store" / u32)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and_then(move |store_id, auth| {
-            store::list_store(auth, store_id, &DB_CLIENT)
+        .and(s())
+        .and_then(move |store_id, auth, c: PooledConnection| {
+            store::list_store(auth, store_id, &*c)
                 .and_then(|store| Ok(warp::reply::json(&store)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -154,8 +191,9 @@ pub fn init_routes() {
     let delete_product = path!("product" / u32)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and_then(move |product_id, auth| {
-            product::delete_product(auth, product_id, &DB_CLIENT)
+        .and(s())
+        .and_then(move |product_id, auth, c: PooledConnection| {
+            product::delete_product(auth, product_id, &*c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -164,8 +202,9 @@ pub fn init_routes() {
     let delete_aisle = path!("aisle" / u32)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and_then(move |aisle_id, auth| {
-            aisle::delete_aisle(auth, aisle_id, &DB_CLIENT)
+        .and(s())
+        .and_then(move |aisle_id, auth, c: PooledConnection| {
+            aisle::delete_aisle(auth, aisle_id, &*c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -174,8 +213,9 @@ pub fn init_routes() {
     let delete_store = path!("store" / u32)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and_then(move |store_id, auth| {
-            store::delete_store(auth, store_id, &DB_CLIENT)
+        .and(s())
+        .and_then(move |store_id, auth, c: PooledConnection| {
+            store::delete_store(auth, store_id, &*c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -185,8 +225,9 @@ pub fn init_routes() {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and_then(move |auth, data: EditWeight| {
-            misc::change_sort_weight(auth, &data, &DB_CLIENT)
+        .and(s())
+        .and_then(move |auth, data: EditWeight, c: PooledConnection| {
+            misc::change_sort_weight(auth, &data, &*c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -226,8 +267,9 @@ pub fn init_routes() {
         .recover(customize_error);
 
     let routes = get_routes.or(post_routes).or(put_routes).or(del_routes);
-    println!("Efficio's ready for requests...");
+    info!("Efficio's ready for requests...");
     warp::serve(routes).run(([127, 0, 0, 1], 3030));
+    Ok(())
 }
 
 fn customize_error(err: Rejection) -> Result<impl Reply, Rejection> {
