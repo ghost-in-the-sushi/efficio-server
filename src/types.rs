@@ -1,11 +1,14 @@
 use std::cmp::Ordering;
 use std::ops::Deref;
+use std::str::FromStr;
 
 use derive_deref::Deref;
 use derive_new::new;
 use hex_view::HexView;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
+
+use crate::error;
 
 #[derive(Deref, PartialEq, Eq)]
 pub struct Auth<'a>(pub &'a str);
@@ -72,23 +75,55 @@ impl Drop for User {
 }
 
 #[derive(Debug, Deref, PartialEq, Eq)]
-pub struct UserId(pub u32);
+pub struct UserId(pub String);
+
+impl FromStr for UserId {
+    type Err = error::ServerError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(UserId(s.to_owned()))
+    }
+}
 
 #[derive(Serialize, Debug, new, Deref, PartialEq, Eq)]
 pub struct StoreId {
-    store_id: u32,
+    store_id: String,
+}
+
+impl FromStr for StoreId {
+    type Err = error::ServerError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(StoreId::new(s.to_owned()))
+    }
 }
 
 #[derive(Debug, Deref, PartialEq, Eq)]
-pub struct AisleId(pub u32);
+pub struct AisleId(pub String);
+
+impl FromStr for AisleId {
+    type Err = error::ServerError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(AisleId(s.to_owned()))
+    }
+}
 
 #[derive(Debug, Deref, PartialEq, Eq)]
-pub struct ProductId(pub u32);
+pub struct ProductId(pub String);
+
+impl FromStr for ProductId {
+    type Err = error::ServerError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(ProductId(s.to_owned()))
+    }
+}
 
 #[derive(Debug, Serialize, new, PartialEq, Eq)]
 pub struct StoreLight {
     name: String,
-    store_id: u32,
+    store_id: String,
 }
 
 #[derive(Deserialize)]
@@ -104,14 +139,14 @@ pub struct StoreLightList {
 
 #[derive(Debug, new, Serialize, PartialEq)]
 pub struct Store {
-    store_id: u32,
+    store_id: String,
     name: String,
     aisles: Vec<Aisle>,
 }
 
 #[derive(Debug, new, Serialize)]
 pub struct Aisle {
-    aisle_id: u32,
+    aisle_id: String,
     name: String,
     pub sort_weight: f32,
     products: Vec<Product>,
@@ -176,7 +211,7 @@ impl From<u32> for Unit {
 
 #[derive(Debug, Serialize, new)]
 pub struct Product {
-    product_id: u32,
+    product_id: String,
     name: String,
     quantity: u32,
     is_done: bool,
@@ -212,13 +247,13 @@ impl Ord for Product {
 
 #[derive(Debug, new, Deserialize)]
 pub struct ProductItemWeight {
-    pub id: u32,
+    pub id: String,
     pub sort_weight: f32,
 }
 
 #[derive(Debug, new, Deserialize)]
 pub struct AisleItemWeight {
-    pub id: u32,
+    pub id: String,
     pub sort_weight: f32,
 }
 
@@ -260,6 +295,7 @@ impl EditProduct {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::salts::tests::*;
 
     #[test]
     fn test_edit_product_has_as_least_a_field() {
@@ -283,9 +319,15 @@ mod tests {
         assert_eq!(false, e.has_at_least_a_field());
         let e = EditWeight::new(None, Some(vec![]));
         assert_eq!(false, e.has_at_least_a_field());
-        let e = EditWeight::new(Some(vec![AisleItemWeight::new(1, 1.0)]), None);
+        let e = EditWeight::new(
+            Some(vec![AisleItemWeight::new(HASH_1.to_owned(), 1.0)]),
+            None,
+        );
         assert_eq!(true, e.has_at_least_a_field());
-        let e = EditWeight::new(None, Some(vec![ProductItemWeight::new(1, 1.0)]));
+        let e = EditWeight::new(
+            None,
+            Some(vec![ProductItemWeight::new(HASH_1.to_owned(), 1.0)]),
+        );
         assert_eq!(true, e.has_at_least_a_field());
     }
 }

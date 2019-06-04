@@ -6,9 +6,10 @@ use fake_redis::FakeConnection as Connection;
 
 pub mod aisles;
 pub mod products;
-pub mod sessions;
+pub mod salts;
 pub mod stores;
 pub mod users;
+mod sessions;
 
 use crate::error::*;
 use crate::types::*;

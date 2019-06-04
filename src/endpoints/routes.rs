@@ -8,6 +8,7 @@ use crate::error;
 use crate::types::*;
 use r2d2_redis::RedisConnectionManager;
 use warp::{self, path, Filter, Rejection, Reply};
+
 const HEADER_AUTH: &str = "x-auth-token";
 const DEFAULT_DB_PORT: u32 = 6379;
 const DEFAULT_DB_HOST: &str = "redis://127.0.0.1";
@@ -33,25 +34,25 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
     debug!("Creating db connection pool");
     let pool = r2d2::Pool::builder().max_size(15).build(manager)?;
 
-    let s = warp::any()
+    let get_connection = warp::any()
         .and_then(move || match pool.get() {
             Ok(c) => Ok(c),
             Err(e) => Err(warp::reject::custom(e)),
         })
         .boxed();
-    let s = move || s.clone();
+    let get_connection = move || get_connection.clone();
 
     // POST /nuke
     let nuke = warp::path("nuke")
         .and(warp::path::end())
-        .and(s())
+        .and(get_connection())
         .and_then(move |c: PooledConnection| misc::nuke(&*c));
 
     // POST /user
     let create_user = warp::path("user")
         .and(warp::path::end())
         .and(warp::body::json())
-        .and(s())
+        .and(get_connection())
         .and_then(move |user: User, c: PooledConnection| {
             user::create_user(&user, &*c)
                 .and_then(|token| Ok(warp::reply::json(&token)))
@@ -62,7 +63,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
     let login = warp::path("login")
         .and(warp::path::end())
         .and(warp::body::json())
-        .and(s())
+        .and(get_connection())
         .and_then(move |auth_info: AuthInfo, c: PooledConnection| {
             session::login(&auth_info, &*c)
                 .and_then(|token| Ok(warp::reply::json(&token)))
@@ -73,7 +74,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
     let logout = warp::path("logout")
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and(s())
+        .and(get_connection())
         .and_then(move |auth: String, c: PooledConnection| {
             session::logout(auth, &*c)
                 .and_then(|()| Ok(warp::reply()))
@@ -84,7 +85,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
     let delete_user = warp::path("user")
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and(s())
+        .and(get_connection())
         .and_then(move |auth: String, c: PooledConnection| {
             user::delete_user(auth, &*c)
                 .and_then(|()| Ok(warp::reply()))
@@ -96,7 +97,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and(s())
+        .and(get_connection())
         .and_then(move |auth, data: NameData, c: PooledConnection| {
             store::create_store(auth, &data, &*c)
                 .and_then(|store_id| Ok(warp::reply::json(&store_id)))
@@ -104,11 +105,11 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         });
 
     // PUT /store/{id}
-    let edit_store = path!("store" / u32)
+    let edit_store = path!("store" / String)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and(s())
+        .and(get_connection())
         .and_then(move |id, auth, data: NameData, c: PooledConnection| {
             store::edit_store(auth, id, &data, &*c)
                 .and_then(|()| Ok(warp::reply()))
@@ -116,11 +117,11 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         });
 
     // POST /store/<id>/aisle
-    let create_aisle = path!("store" / u32 / "aisle")
+    let create_aisle = path!("store" / String / "aisle")
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and(s())
+        .and(get_connection())
         .and_then(move |store_id, auth, data: NameData, c: PooledConnection| {
             aisle::create_aisle(auth, store_id, &data, &*c)
                 .and_then(|aisle| Ok(warp::reply::json(&aisle)))
@@ -128,11 +129,11 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         });
 
     // PUT /aisle/<id>
-    let edit_aisle = path!("aisle" / u32)
+    let edit_aisle = path!("aisle" / String)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and(s())
+        .and(get_connection())
         .and_then(move |aisle_id, auth, data: NameData, c: PooledConnection| {
             aisle::rename_aisle(auth, aisle_id, &data, &*c)
                 .and_then(|()| Ok(warp::reply()))
@@ -140,11 +141,11 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         });
 
     // POST /aisle/<id>/product
-    let create_product = path!("aisle" / u32 / "product")
+    let create_product = path!("aisle" / String / "product")
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and(s())
+        .and(get_connection())
         .and_then(move |aisle_id, auth, data: NameData, c: PooledConnection| {
             product::create_product(auth, aisle_id, &data, &*c)
                 .and_then(|product| Ok(warp::reply::json(&product)))
@@ -152,11 +153,11 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         });
 
     // PUT /product/<id>
-    let edit_product = path!("product" / u32)
+    let edit_product = path!("product" / String)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and(s())
+        .and(get_connection())
         .and_then(
             move |product_id, auth, data: EditProduct, c: PooledConnection| {
                 product::edit_product(auth, product_id, &data, &*c)
@@ -169,7 +170,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
     let get_all_stores = warp::path("store")
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and(s())
+        .and(get_connection())
         .and_then(move |auth, c: PooledConnection| {
             store::list_stores(auth, &*c)
                 .and_then(|stores| Ok(warp::reply::json(&stores)))
@@ -177,10 +178,10 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         });
 
     // GET /store/<id>
-    let list_store = path!("store" / u32)
+    let list_store = path!("store" / String)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and(s())
+        .and(get_connection())
         .and_then(move |store_id, auth, c: PooledConnection| {
             store::list_store(auth, store_id, &*c)
                 .and_then(|store| Ok(warp::reply::json(&store)))
@@ -188,10 +189,10 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         });
 
     // DELETE /product/<id>
-    let delete_product = path!("product" / u32)
+    let delete_product = path!("product" / String)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and(s())
+        .and(get_connection())
         .and_then(move |product_id, auth, c: PooledConnection| {
             product::delete_product(auth, product_id, &*c)
                 .and_then(|()| Ok(warp::reply()))
@@ -199,10 +200,10 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         });
 
     // DELETE /aisle/<id>
-    let delete_aisle = path!("aisle" / u32)
+    let delete_aisle = path!("aisle" / String)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and(s())
+        .and(get_connection())
         .and_then(move |aisle_id, auth, c: PooledConnection| {
             aisle::delete_aisle(auth, aisle_id, &*c)
                 .and_then(|()| Ok(warp::reply()))
@@ -210,10 +211,10 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         });
 
     // DELETE /store/<id>
-    let delete_store = path!("store" / u32)
+    let delete_store = path!("store" / String)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
-        .and(s())
+        .and(get_connection())
         .and_then(move |store_id, auth, c: PooledConnection| {
             store::delete_store(auth, store_id, &*c)
                 .and_then(|()| Ok(warp::reply()))
@@ -225,7 +226,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
-        .and(s())
+        .and(get_connection())
         .and_then(move |auth, data: EditWeight, c: PooledConnection| {
             misc::change_sort_weight(auth, &data, &*c)
                 .and_then(|()| Ok(warp::reply()))

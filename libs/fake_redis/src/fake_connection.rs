@@ -49,9 +49,18 @@ impl FakeConnection {
         ))
     }
 
+    pub fn set<V: ToRedisArgs, RV: FromRedisValue>(&self ,key: &str, value: V) -> RedisResult<RV> {
+        let mut pool = POOL.lock().unwrap();
+        let db = pool.entry(self.db).or_insert_with(Storages::new);
+        let v = value.to_redis_args();
+        db.k.insert(key.to_owned(), Value::Data(v[0].clone()));
+        from_redis_value(&Value::Okay)
+    }
+
     pub fn exists<RV: FromRedisValue>(&self, key: &str) -> RedisResult<RV> {
         let mut pool = POOL.lock().unwrap();
         let db = pool.entry(self.db).or_insert_with(Storages::new);
+        // dbg!(&db);
         from_redis_value(&Value::Int(
             (db.k.contains_key(&key.to_owned())
                 || db.h.contains_key(&key.to_owned())

@@ -1,4 +1,3 @@
-use argon2rs;
 use hex_view::HexView;
 use rand::{self, Rng};
 
@@ -8,23 +7,15 @@ use fake_redis::FakeConnection as Connection;
 use redis::{self, Commands, Connection};
 
 use crate::db;
-use crate::error::{self, Result, ServerError};
+use crate::error::{self, *};
 use crate::types::*;
 
-const NEXT_USER_ID: &str = "next_user_id";
 const USER_PWD: &str = "password";
 const USER_MAIL: &str = "email";
 const USER_SALT_M: &str = "salt_mail";
 const USER_SALT_P: &str = "salt_password";
 const USER_NAME: &str = "username";
 const USERS_LIST: &str = "users";
-
-fn hash(data: &str, salt: &str) -> String {
-    format!(
-        "{:x}",
-        HexView::from(&argon2rs::argon2i_simple(&data, &salt))
-    )
-}
 
 fn user_key(user_id: &UserId) -> String {
     format!("user:{}", **user_id)
@@ -47,9 +38,9 @@ pub fn save_user(c: &Connection, user: &User) -> Result<Token> {
         let mut rng = rand::thread_rng();
         let salt_mail = rng.gen::<u64>().to_string();
         let salt_pwd = rng.gen::<u64>().to_string();
-        let hashed_pwd = hash(&user.password, &salt_pwd);
-        let hashed_mail = hash(&user.email, &salt_mail);
-        let user_id = UserId(c.incr(NEXT_USER_ID, 1)?);
+        let hashed_pwd = db::salts::hash(&user.password, &salt_pwd);
+        let hashed_mail = db::salts::hash(&user.email, &salt_mail);
+        let user_id = db::salts::get_next_user_id(&c)?;
         c.hset_multiple(
             &user_key(&user_id),
             &[
@@ -60,7 +51,7 @@ pub fn save_user(c: &Connection, user: &User) -> Result<Token> {
                 (USER_SALT_P, &salt_pwd),
             ],
         )?;
-        c.hset(USERS_LIST, &norm_username, *user_id)?;
+        c.hset(USERS_LIST, &norm_username, user_id.to_string())?;
         let auth = gen_auth(&mut rng);
         db::sessions::store_session(&c, &auth, &user_id)?;
         Ok(auth.into())
@@ -90,7 +81,7 @@ pub fn login(c: &Connection, auth_info: &AuthInfo) -> Result<(Token, UserId)> {
     let user_key = user_key(&user_id);
     let salt_pwd: String = c.hget(&user_key, USER_SALT_P)?;
     let stored_pwd: String = c.hget(&user_key, USER_PWD)?;
-    let hashed_pwd = hash(&auth_info.password, &salt_pwd);
+    let hashed_pwd = db::salts::hash(&auth_info.password, &salt_pwd);
     if hashed_pwd == stored_pwd {
         let mut rng = rand::thread_rng();
         Ok((gen_auth(&mut rng).into(), user_id))
@@ -105,7 +96,7 @@ pub fn login(c: &Connection, auth_info: &AuthInfo) -> Result<(Token, UserId)> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::db::tests::*;
+    use crate::db::{salts::tests::*, tests::*};
     use fake_redis::FakeCient as Client;
 
     pub fn gen_user() -> User {
@@ -126,23 +117,21 @@ pub mod tests {
         res.unwrap()
     }
 
-    // pub fn store_user_for_test_with_reset() -> Token {
-    //     reset_db();
-    //     store_user_for_test()
-    // }
-
     #[test]
     fn store_user_test() {
         let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         let token = store_user_for_test(&c);
         let user = gen_user();
-        assert_eq!(Ok(true), c.exists("user:1"));
-        assert_eq!(Ok(true), c.exists("sessions:1"));
-        assert_eq!(Ok(true), c.sismember("sessions:1", token.session_token));
+        assert_eq!(Ok(true), c.exists(&format!("user:{}", HASH_1)));
+        assert_eq!(Ok(true), c.exists(&format!("sessions:{}", HASH_1)));
+        assert_eq!(
+            Ok(true),
+            c.sismember(&format!("sessions:{}", HASH_1), token.session_token)
+        );
         assert_eq!(Ok(1), c.get("next_user_id"));
         assert_eq!(Ok(true), c.hexists("users", "toto"));
-        assert_eq!(Ok(1), c.hget("users", "toto"));
+        assert_eq!(Ok(HASH_1.to_owned()), c.hget("users", "toto"));
 
         assert_eq!(
             Ok(true),
@@ -214,7 +203,7 @@ pub mod tests {
         let auth = Auth(&token.session_token);
         assert_eq!(Ok(()), delete_user(&c, &auth));
         assert_eq!(Ok(false), c.exists(USERS_LIST));
-        assert_eq!(Ok(false), c.exists("user:1"));
+        assert_eq!(Ok(false), c.exists(&format!("user:{}", HASH_1)));
 
         store_user_for_test(&c); // create toto user as user:2
         let mut user = gen_user();
@@ -229,8 +218,8 @@ pub mod tests {
         assert_eq!(Ok(()), delete_user(&c, &auth)); // delete tata
         assert_eq!(Ok(false), c.hexists(USERS_LIST, "tata"));
         assert_eq!(Ok(true), c.hexists(USERS_LIST, "toto"));
-        assert_eq!(Ok(false), c.exists("user:1"));
-        assert_eq!(Ok(true), c.exists("user:2"));
-        assert_eq!(Ok(false), c.exists("user:3"));
+        assert_eq!(Ok(false), c.exists(&format!("user:{}", HASH_1)));
+        assert_eq!(Ok(true), c.exists(&format!("user:{}", HASH_2)));
+        assert_eq!(Ok(false), c.exists(&format!("user:{}", HASH_3)));
     }
 }

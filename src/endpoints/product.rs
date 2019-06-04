@@ -11,7 +11,7 @@ use fake_redis::FakeConnection as Connection;
 
 pub fn create_product(
     auth: String,
-    aisle_id: u32,
+    aisle_id: String,
     data: &NameData,
     c: &Connection,
 ) -> Result<Product> {
@@ -22,7 +22,7 @@ pub fn create_product(
 
 pub fn edit_product(
     auth: String,
-    product_id: u32,
+    product_id: String,
     data: &EditProduct,
     c: &Connection,
 ) -> Result<()> {
@@ -38,7 +38,7 @@ pub fn edit_product(
     }
 }
 
-pub fn delete_product(auth: String, product_id: u32, c: &Connection) -> Result<()> {
+pub fn delete_product(auth: String, product_id: String, c: &Connection) -> Result<()> {
     let auth = Auth(&auth);
     db::sessions::validate_session(&c, &auth)?;
     db::products::delete_product(&c, &auth, &ProductId(product_id))
