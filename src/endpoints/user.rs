@@ -16,17 +16,17 @@ use crate::types::*;
 
 const MIN_ENTROPY_SCORE: u8 = 2;
 
-pub fn create_user(user: &User, c: &Connection) -> Result<Token> {
+pub fn create_user(user: &User, c: &Connection) -> Result<ConnectionToken> {
     validate_email(&user.email)?;
     validate_password(&user)?;
     validate_username(&user.username)?;
     db::users::save_user(&c, &user)
 }
 
-pub fn delete_user(auth: String, c: &Connection) -> Result<()> {
+pub fn delete_user(auth: &String, user_id: &String, c: &Connection) -> Result<()> {
     let auth = Auth(&auth);
     db::sessions::validate_session(&c, &auth)?;
-    db::users::delete_user(&c, &auth)
+    db::users::delete_user(&c, &auth, &UserId(user_id.to_string()))
 }
 
 fn validate_email(mail: &str) -> Result<()> {

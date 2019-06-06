@@ -7,9 +7,9 @@ use fake_redis::FakeConnection as Connection;
 pub mod aisles;
 pub mod products;
 pub mod salts;
-pub mod stores;
+pub mod sessions;
 pub mod users;
-mod sessions;
+pub mod stores;
 
 use crate::error::*;
 use crate::types::*;
@@ -41,8 +41,4 @@ mod tests {
         )
     }
 
-    // pub fn reset_db(c: &Connection) {
-    //     c.reset();
-    //     //let _: () = redis::cmd("FLUSHDB").query(&c).expect("error on flush");
-    // }
 }

@@ -8,15 +8,13 @@ use redis::Connection;
 #[cfg(test)]
 use fake_redis::FakeConnection as Connection;
 
-pub fn login(auth_info: &AuthInfo, c: &Connection) -> Result<Token> {
-    let (token, user_id) = users::login(&c, &auth_info)?;
-    sessions::store_session(&c, &token.session_token, &user_id)?;
-    Ok(token)
+pub fn login(auth_info: &AuthInfo, c: &Connection) -> Result<ConnectionToken> {
+    users::login(&c, &auth_info)
 }
 
-pub fn logout(auth: String, c: &Connection) -> Result<()> {
+pub fn logout(auth: &String, user_id: &String, c: &Connection) -> Result<()> {
     let auth = Auth(&auth);
     sessions::validate_session(&c, &auth)?;
-    sessions::delete_session(&c, &auth)?;
+    sessions::delete_session(&c, &auth, &UserId(user_id.to_owned()))?;
     Ok(())
 }

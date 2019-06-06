@@ -67,9 +67,16 @@ fn delete_session_with_connection(c: &Connection, auth: &Auth, user_id: &UserId)
     )?)
 }
 
-pub fn delete_session(c: &Connection, auth: &Auth) -> Result<()> {
+pub fn delete_session(c: &Connection, auth: &Auth, wanted_user_id: &UserId) -> Result<()> {
     let user_id = get_user_id(&c, auth)?;
-    delete_session_with_connection(&c, &auth, &user_id)
+    if user_id == *wanted_user_id {
+        delete_session_with_connection(&c, &auth, &user_id)
+    } else {
+        Err(ServerError::new(
+            error::UNAUTHORISED,
+            "x-auth-token does not belong to this user",
+        ))
+    }
 }
 
 pub fn delete_all_user_sessions(c: &Connection, auth: &Auth) -> Result<()> {
@@ -84,7 +91,7 @@ pub fn delete_all_user_sessions(c: &Connection, auth: &Auth) -> Result<()> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::db::{tests::*, salts::tests::*};
+    use crate::db::{salts::tests::*, tests::*};
     use fake_redis::FakeCient as Client;
 
     pub const AUTH: Auth = Auth("tokenauth");
@@ -142,7 +149,10 @@ pub mod tests {
         let client = Client::open(get_db_addr().as_str()).unwrap();
         let c = client.get_connection().unwrap();
         store_session_for_test(&c, &AUTH);
-        assert_eq!(Ok(()), delete_session(&c, &AUTH));
+        assert_eq!(
+            Ok(()),
+            delete_session(&c, &AUTH, &UserId(HASH_1.to_owned()))
+        );
         assert_eq!(Ok(false), c.exists(SESSIONS_LIST));
         assert_eq!(
             Ok(false),

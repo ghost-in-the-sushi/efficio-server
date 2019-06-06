@@ -1,10 +1,9 @@
 use std::cmp::Ordering;
-use std::ops::Deref;
 use std::str::FromStr;
+use std::string::ToString;
 
 use derive_deref::Deref;
 use derive_new::new;
-use hex_view::HexView;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
@@ -25,39 +24,10 @@ impl Drop for AuthInfo {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Token {
+#[derive(Debug, Serialize, Deserialize, new)]
+pub struct ConnectionToken {
     pub session_token: String,
-}
-
-impl Deref for Token {
-    type Target = String;
-
-    fn deref(&self) -> &String {
-        &self.session_token
-    }
-}
-
-impl From<[u8; 32]> for Token {
-    fn from(s: [u8; 32]) -> Self {
-        Token {
-            session_token: format!("{:x}", HexView::from(&s)),
-        }
-    }
-}
-
-impl From<String> for Token {
-    fn from(s: String) -> Self {
-        Token { session_token: s }
-    }
-}
-
-impl From<&str> for Token {
-    fn from(s: &str) -> Self {
-        Token {
-            session_token: s.to_string(),
-        }
-    }
+    pub user_id: String,
 }
 
 #[derive(Default, Deserialize, Debug)]
@@ -77,6 +47,12 @@ impl Drop for User {
 #[derive(Debug, Deref, PartialEq, Eq)]
 pub struct UserId(pub String);
 
+impl ToString for UserId {
+    fn to_string(&self) -> String {
+        self.0.to_owned()
+    }
+}
+
 impl FromStr for UserId {
     type Err = error::ServerError;
 
@@ -90,6 +66,11 @@ pub struct StoreId {
     store_id: String,
 }
 
+impl ToString for StoreId {
+    fn to_string(&self) -> String {
+        self.store_id.to_owned()
+    }
+}
 impl FromStr for StoreId {
     type Err = error::ServerError;
 
@@ -101,6 +82,12 @@ impl FromStr for StoreId {
 #[derive(Debug, Deref, PartialEq, Eq)]
 pub struct AisleId(pub String);
 
+impl ToString for AisleId {
+    fn to_string(&self) -> String {
+        self.0.to_owned()
+    }
+}
+
 impl FromStr for AisleId {
     type Err = error::ServerError;
 
@@ -111,6 +98,12 @@ impl FromStr for AisleId {
 
 #[derive(Debug, Deref, PartialEq, Eq)]
 pub struct ProductId(pub String);
+
+impl ToString for ProductId {
+    fn to_string(&self) -> String {
+        self.0.to_owned()
+    }
+}
 
 impl FromStr for ProductId {
     type Err = error::ServerError;

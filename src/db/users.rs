@@ -27,7 +27,7 @@ fn gen_auth(rng: &mut rand::rngs::ThreadRng) -> String {
     format!("{:x}", HexView::from(&auth))
 }
 
-pub fn save_user(c: &Connection, user: &User) -> Result<Token> {
+pub fn save_user(c: &Connection, user: &User) -> Result<ConnectionToken> {
     let norm_username = user.username.to_lowercase();
     if c.hexists(USERS_LIST, &norm_username)? {
         Err(ServerError::new(
@@ -54,21 +54,28 @@ pub fn save_user(c: &Connection, user: &User) -> Result<Token> {
         c.hset(USERS_LIST, &norm_username, user_id.to_string())?;
         let auth = gen_auth(&mut rng);
         db::sessions::store_session(&c, &auth, &user_id)?;
-        Ok(auth.into())
+        Ok(ConnectionToken::new(auth.into(), user_id.to_string()))
     }
 }
 
-pub fn delete_user(c: &Connection, auth: &Auth) -> Result<()> {
+pub fn delete_user(c: &Connection, auth: &Auth, wanted_user_id: &UserId) -> Result<()> {
     let user_id = db::sessions::get_user_id(&c, auth)?;
-    let user_key = user_key(&user_id);
-    let username: String = c.hget(&user_key, USER_NAME)?;
-    db::stores::delete_all_user_stores(&c, &auth)?;
-    c.hdel(USERS_LIST, &username.to_lowercase())?;
-    db::sessions::delete_all_user_sessions(&c, auth)?;
-    Ok(c.del(&user_key)?)
+    if user_id == *wanted_user_id {
+        let user_key = user_key(&user_id);
+        let username: String = c.hget(&user_key, USER_NAME)?;
+        db::stores::delete_all_user_stores(&c, &auth)?;
+        c.hdel(USERS_LIST, &username.to_lowercase())?;
+        db::sessions::delete_all_user_sessions(&c, auth)?;
+        Ok(c.del(&user_key)?)
+    } else {
+        Err(ServerError::new(
+            error::UNAUTHORISED,
+            "x-auth-token does not belong to this user",
+        ))
+    }
 }
 
-pub fn login(c: &Connection, auth_info: &AuthInfo) -> Result<(Token, UserId)> {
+pub fn login(c: &Connection, auth_info: &AuthInfo) -> Result<ConnectionToken> {
     let user_id = UserId(
         c.hget(USERS_LIST, &auth_info.username.to_lowercase())
             .or_else(|_| {
@@ -84,7 +91,9 @@ pub fn login(c: &Connection, auth_info: &AuthInfo) -> Result<(Token, UserId)> {
     let hashed_pwd = db::salts::hash(&auth_info.password, &salt_pwd);
     if hashed_pwd == stored_pwd {
         let mut rng = rand::thread_rng();
-        Ok((gen_auth(&mut rng).into(), user_id))
+        let auth = gen_auth(&mut rng);
+        db::sessions::store_session(&c, &auth, &user_id)?;
+        Ok(ConnectionToken::new(auth, user_id.to_string()))
     } else {
         Err(ServerError::new(
             error::INVALID_USER_OR_PWD,
@@ -107,7 +116,7 @@ pub mod tests {
         }
     }
 
-    pub fn store_user_for_test(c: &Connection) -> Token {
+    pub fn store_user_for_test(c: &Connection) -> ConnectionToken {
         let user = gen_user();
         let res = save_user(&c, &user);
         if res.is_err() {
@@ -201,7 +210,7 @@ pub mod tests {
         let c = client.get_connection().unwrap();
         let token = store_user_for_test(&c);
         let auth = Auth(&token.session_token);
-        assert_eq!(Ok(()), delete_user(&c, &auth));
+        assert_eq!(Ok(()), delete_user(&c, &auth, &UserId(HASH_1.to_owned())));
         assert_eq!(Ok(false), c.exists(USERS_LIST));
         assert_eq!(Ok(false), c.exists(&format!("user:{}", HASH_1)));
 
@@ -215,7 +224,7 @@ pub mod tests {
         assert_eq!(true, res.is_ok());
         let token = res.unwrap();
         let auth = Auth(&token.session_token);
-        assert_eq!(Ok(()), delete_user(&c, &auth)); // delete tata
+        assert_eq!(Ok(()), delete_user(&c, &auth, &UserId(HASH_3.to_owned()))); // delete tata
         assert_eq!(Ok(false), c.hexists(USERS_LIST, "tata"));
         assert_eq!(Ok(true), c.hexists(USERS_LIST, "toto"));
         assert_eq!(Ok(false), c.exists(&format!("user:{}", HASH_1)));

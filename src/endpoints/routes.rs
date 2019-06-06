@@ -71,23 +71,23 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         });
 
     // POST /logout
-    let logout = warp::path("logout")
+    let logout = path!("logout" / String)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(get_connection())
-        .and_then(move |auth: String, c: PooledConnection| {
-            session::logout(auth, &*c)
+        .and_then(move |id: String, auth: String, c: PooledConnection| {
+            session::logout(&auth, &id, &*c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
 
     // DELETE /user
-    let delete_user = warp::path("user")
+    let delete_user = path!("user" / String)
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(get_connection())
-        .and_then(move |auth: String, c: PooledConnection| {
-            user::delete_user(auth, &*c)
+        .and_then(move |id: String, auth: String, c: PooledConnection| {
+            user::delete_user(&auth, &id, &*c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
