@@ -8,8 +8,8 @@ pub mod aisles;
 pub mod products;
 pub mod salts;
 pub mod sessions;
-pub mod users;
 pub mod stores;
+pub mod users;
 
 use crate::error::*;
 use crate::types::*;

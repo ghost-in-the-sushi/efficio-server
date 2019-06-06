@@ -214,11 +214,13 @@ pub mod tests {
         let is_done: i32 = c.hget(&prod_key, PROD_STATE).unwrap();
         assert_eq!(false, is_done != 0);
         assert_eq!(Ok(HASH_1.to_owned()), c.hget(&prod_key, PROD_OWNER));
-        assert_eq!(Ok(true), c
-            .sismember(
+        assert_eq!(
+            Ok(true),
+            c.sismember(
                 &products_in_aisle_key(&AisleId(HASH_1.to_owned())),
                 HASH_1.to_owned(),
-            ));
+            )
+        );
     }
 
     fn add_2nd_product(c: &Connection) {
@@ -268,7 +270,6 @@ pub mod tests {
         add_2nd_product(&c);
         let res = get_products_in_aisle(&c, &AisleId(HASH_1.to_owned()));
         let expected = vec![
-
             Product::new(
                 HASH_1.to_owned(),
                 NAME.to_owned(),

@@ -8,7 +8,12 @@ use redis::Connection;
 #[cfg(test)]
 use fake_redis::FakeConnection as Connection;
 
-pub fn create_aisle(auth: String, store_id: String, data: &NameData, c: &Connection) -> Result<Aisle> {
+pub fn create_aisle(
+    auth: String,
+    store_id: String,
+    data: &NameData,
+    c: &Connection,
+) -> Result<Aisle> {
     let auth = Auth(&auth);
     db::sessions::validate_session(&c, &auth)?;
     db::aisles::save_aisle(&c, &auth, &StoreId::new(store_id), &data.name)

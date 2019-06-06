@@ -1,7 +1,6 @@
 use failure::{self, Fail};
 use log::*;
 
-
 use crate::cli::*;
 use crate::endpoints::*;
 use crate::error;
