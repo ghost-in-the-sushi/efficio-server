@@ -7,31 +7,31 @@ matrix:
   include:
   - env: TARGET=x86_64-unknown-linux-gnu 
     script: cargo build; cargo build --release; cargo test
-  # - env: TARGET=x86_64-apple-darwin
-  #   os: osx
-  # - env: TARGET=x86_64-pc-windows-msvc
-  #   os: windows
-  # - env: TARGET=x86_64-unknown-linux-gnu
-  #   rust: beta
-  # - env: TARGET=x86_64-unknown-linux-gnu
-  #   rust: nightly
-  # - env: RUSTFMT
-  #   rust: stable
-  #   install:
-  #   - rustup component add rustfmt
-  #   script:
-  #   - cargo fmt -- --check
-  # - env: RUSTFLAGS="-D warnings"
-  #   rust: stable
-  #   install: 
-  #   script:
-  #   - cargo check --tests
-  # - env: CLIPPY
-  #   rust: stable
-  #   install:
-  #   - rustup component add clippy
-  #   script:
-  #   - cargo clippy --all-features
+  - env: TARGET=x86_64-apple-darwin
+    os: osx
+  - env: TARGET=x86_64-pc-windows-msvc
+    os: windows
+  - env: TARGET=x86_64-unknown-linux-gnu
+    rust: beta
+  - env: TARGET=x86_64-unknown-linux-gnu
+    rust: nightly
+  - env: RUSTFMT
+    rust: stable
+    install:
+    - rustup component add rustfmt
+    script:
+    - cargo fmt -- --check
+  - env: RUSTFLAGS="-D warnings"
+    rust: stable
+    install: 
+    script:
+    - cargo check --tests
+  - env: CLIPPY
+    rust: stable
+    install:
+    - rustup component add clippy
+    script:
+    - cargo clippy --all-features
 install:
 - rustc -Vv
 - cargo -V
@@ -41,6 +41,9 @@ branches:
   only:
   - "/^v\\d+\\.\\d+\\.\\d+.*$/"
   - master
+branches:
+  except:
+  - /^untagged/
 before_deploy:
   - sh ci/before_deploy.sh
 deploy:
@@ -52,6 +55,7 @@ deploy:
   on:
     condition: "$TRAVIS_OS_NAME = linux && $TRAVIS_RUST_VERSION = stable"
     repo: ghost-in-the-sushi/efficio-server
+    tags: true
 cache:
   cargo: true
 before_cache:
