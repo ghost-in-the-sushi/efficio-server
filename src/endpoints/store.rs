@@ -8,32 +8,32 @@ use redis::Connection;
 #[cfg(test)]
 use fake_redis::FakeConnection as Connection;
 
-pub fn create_store(auth: String, data: &NameData, c: &Connection) -> Result<StoreId> {
+pub fn create_store(auth: String, data: &NameData, c: &mut Connection) -> Result<StoreId> {
     let auth = Auth(&auth);
-    db::sessions::validate_session(&c, &auth)?;
-    db::stores::save_store(&c, &auth, &data.name)
+    db::sessions::validate_session(c, &auth)?;
+    db::stores::save_store(c, &auth, &data.name)
 }
 
-pub fn edit_store(auth: String, id: String, data: &NameData, c: &Connection) -> Result<()> {
+pub fn edit_store(auth: String, id: String, data: &NameData, c: &mut Connection) -> Result<()> {
     let auth = Auth(&auth);
-    db::sessions::validate_session(&c, &auth)?;
-    db::stores::edit_store(&c, &auth, &StoreId::new(id), &data.name)
+    db::sessions::validate_session(c, &auth)?;
+    db::stores::edit_store(c, &auth, &StoreId::new(id), &data.name)
 }
 
-pub fn list_stores(auth: String, c: &Connection) -> Result<StoreLightList> {
+pub fn list_stores(auth: String, c: &mut Connection) -> Result<StoreLightList> {
     let auth = Auth(&auth);
-    db::sessions::validate_session(&c, &auth)?;
-    Ok(StoreLightList::new(db::stores::get_all_stores(&c, &auth)?))
+    db::sessions::validate_session(c, &auth)?;
+    Ok(StoreLightList::new(db::stores::get_all_stores(c, &auth)?))
 }
 
-pub fn list_store(auth: String, store_id: String, c: &Connection) -> Result<Store> {
+pub fn list_store(auth: String, store_id: String, c: &mut Connection) -> Result<Store> {
     let auth = Auth(&auth);
-    db::sessions::validate_session(&c, &auth)?;
-    db::stores::list_store(&c, &auth, &StoreId::new(store_id))
+    db::sessions::validate_session(c, &auth)?;
+    db::stores::list_store(c, &auth, &StoreId::new(store_id))
 }
 
-pub fn delete_store(auth: String, store_id: String, c: &Connection) -> Result<()> {
+pub fn delete_store(auth: String, store_id: String, c: &mut Connection) -> Result<()> {
     let auth = Auth(&auth);
-    db::sessions::validate_session(&c, &auth)?;
-    db::stores::delete_store(&c, &auth, &StoreId::new(store_id))
+    db::sessions::validate_session(c, &auth)?;
+    db::stores::delete_store(c, &auth, &StoreId::new(store_id))
 }

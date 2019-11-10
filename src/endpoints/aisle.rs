@@ -12,21 +12,26 @@ pub fn create_aisle(
     auth: String,
     store_id: String,
     data: &NameData,
-    c: &Connection,
+    c: &mut Connection,
 ) -> Result<Aisle> {
     let auth = Auth(&auth);
-    db::sessions::validate_session(&c, &auth)?;
-    db::aisles::save_aisle(&c, &auth, &StoreId::new(store_id), &data.name)
+    db::sessions::validate_session(c, &auth)?;
+    db::aisles::save_aisle(c, &auth, &StoreId::new(store_id), &data.name)
 }
 
-pub fn rename_aisle(auth: String, aisle_id: String, data: &NameData, c: &Connection) -> Result<()> {
+pub fn rename_aisle(
+    auth: String,
+    aisle_id: String,
+    data: &NameData,
+    c: &mut Connection,
+) -> Result<()> {
     let auth = Auth(&auth);
-    db::sessions::validate_session(&c, &auth)?;
-    db::aisles::edit_aisle(&c, &auth, &AisleId(aisle_id), &data.name)
+    db::sessions::validate_session(c, &auth)?;
+    db::aisles::edit_aisle(c, &auth, &AisleId(aisle_id), &data.name)
 }
 
-pub fn delete_aisle(auth: String, aisle_id: String, c: &Connection) -> Result<()> {
+pub fn delete_aisle(auth: String, aisle_id: String, c: &mut Connection) -> Result<()> {
     let auth = Auth(&auth);
-    db::sessions::validate_session(&c, &auth)?;
-    db::aisles::delete_aisle(&c, &auth, &AisleId(aisle_id))
+    db::sessions::validate_session(c, &auth)?;
+    db::aisles::delete_aisle(c, &auth, &AisleId(aisle_id))
 }

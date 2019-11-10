@@ -9,7 +9,11 @@ use redis::Connection;
 #[cfg(test)]
 use fake_redis::FakeConnection as Connection;
 
-pub fn change_sort_weight(auth: String, data: &EditWeight, c: &Connection) -> error::Result<()> {
+pub fn change_sort_weight(
+    auth: String,
+    data: &EditWeight,
+    c: &mut Connection,
+) -> error::Result<()> {
     if !data.has_at_least_a_field() {
         Err(error::ServerError::new(
             INVALID_PARAMS,
@@ -22,11 +26,11 @@ pub fn change_sort_weight(auth: String, data: &EditWeight, c: &Connection) -> er
         if let Some(ref aisles) = data.aisles {
             aisles
                 .iter()
-                .try_for_each(|w| db::aisles::edit_aisle_sort_weight(&c, &mut pipe, &auth, &w))?;
+                .try_for_each(|w| db::aisles::edit_aisle_sort_weight(c, &mut pipe, &auth, &w))?;
         }
         if let Some(ref products) = data.products {
             products.iter().try_for_each(|w| {
-                db::products::edit_product_sort_weight(&c, &mut pipe, &auth, &w)
+                db::products::edit_product_sort_weight(c, &mut pipe, &auth, &w)
             })?;
         }
         pipe.query(c)?;
@@ -36,7 +40,7 @@ pub fn change_sort_weight(auth: String, data: &EditWeight, c: &Connection) -> er
 
 // Reset the DB, only available in debug compilation
 #[cfg(not(test))]
-pub fn nuke(c: &Connection) -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
+pub fn nuke(c: &mut Connection) -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
     if cfg!(debug_assertions) {
         redis::cmd("FLUSHDB")
             .query::<()>(c)
@@ -48,7 +52,7 @@ pub fn nuke(c: &Connection) -> Result<impl warp::reply::Reply, warp::reject::Rej
 }
 
 #[cfg(test)]
-pub fn nuke(_: &Connection) -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
+pub fn nuke(_: &mut Connection) -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
     if false {
         Ok(warp::reply())
     } else {

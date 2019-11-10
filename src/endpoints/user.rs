@@ -16,17 +16,17 @@ use crate::types::*;
 
 const MIN_ENTROPY_SCORE: u8 = 2;
 
-pub fn create_user(user: &User, c: &Connection) -> Result<ConnectionToken> {
+pub fn create_user(user: &User, c: &mut Connection) -> Result<ConnectionToken> {
     validate_email(&user.email)?;
     validate_password(&user)?;
     validate_username(&user.username)?;
-    db::users::save_user(&c, &user)
+    db::users::save_user(c, &user)
 }
 
-pub fn delete_user(auth: &String, user_id: &String, c: &Connection) -> Result<()> {
+pub fn delete_user(auth: &String, user_id: &String, c: &mut Connection) -> Result<()> {
     let auth = Auth(&auth);
-    db::sessions::validate_session(&c, &auth)?;
-    db::users::delete_user(&c, &auth, &UserId(user_id.to_string()))
+    db::sessions::validate_session(c, &auth)?;
+    db::users::delete_user(c, &auth, &UserId(user_id.to_string()))
 }
 
 fn validate_email(mail: &str) -> Result<()> {
@@ -41,21 +41,18 @@ fn validate_password(user: &User) -> Result<()> {
     let entropy = zxcvbn::zxcvbn(&user.password, &[&user.username, &user.email])
         .or_else(|_| Err(ServerError::new(INVALID_PARAMS, "Empty password")))?;
 
-    if entropy.score < MIN_ENTROPY_SCORE {
+    if entropy.score() < MIN_ENTROPY_SCORE {
         Err(ServerError::new(
             INVALID_PARAMS,
             &format!(
                 "Password field is too weak (score: {}): {}",
-                entropy.score.to_string(),
-                entropy
-                    .feedback
-                    .unwrap_or_else(|| zxcvbn::feedback::Feedback {
-                        warning: Some("Unknown reason"),
-                        suggestions: vec![]
-                    })
-                    .warning
-                    .unwrap_or_else(|| "Unknown reason")
-                    .to_string()
+                entropy.score().to_string(),
+                entropy.feedback().as_ref().map_or_else(
+                    || "Unknown reason".to_string(),
+                    |v| v
+                        .warning()
+                        .map_or_else(|| "Unknown reason".to_string(), |v| format!("{}", v))
+                )
             ),
         ))
     } else {

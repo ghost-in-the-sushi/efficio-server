@@ -37,7 +37,7 @@ fn generate_salt() -> String {
 }
 
 fn get_next_id<RV: std::str::FromStr>(
-    c: &Connection,
+    c: &mut Connection,
     next_key: &str,
     salt_key: &str,
 ) -> Result<RV> {
@@ -57,20 +57,20 @@ fn get_next_id<RV: std::str::FromStr>(
     )))
 }
 
-pub fn get_next_user_id(c: &Connection) -> Result<UserId> {
-    get_next_id(&c, NEXT_USER_ID, USER_ID_SALT)
+pub fn get_next_user_id(c: &mut Connection) -> Result<UserId> {
+    get_next_id(c, NEXT_USER_ID, USER_ID_SALT)
 }
 
-pub fn get_next_store_id(c: &Connection) -> Result<StoreId> {
-    get_next_id(&c, NEXT_STORE_ID, STORE_ID_SALT)
+pub fn get_next_store_id(c: &mut Connection) -> Result<StoreId> {
+    get_next_id(c, NEXT_STORE_ID, STORE_ID_SALT)
 }
 
-pub fn get_next_aisle_id(c: &Connection) -> Result<AisleId> {
-    get_next_id(&c, NEXT_AISLE_ID, AISLE_ID_SALT)
+pub fn get_next_aisle_id(c: &mut Connection) -> Result<AisleId> {
+    get_next_id(c, NEXT_AISLE_ID, AISLE_ID_SALT)
 }
 
-pub fn get_next_product_id(c: &Connection) -> Result<ProductId> {
-    get_next_id(&c, NEXT_PROD_ID, PROD_ID_SALT)
+pub fn get_next_product_id(c: &mut Connection) -> Result<ProductId> {
+    get_next_id(c, NEXT_PROD_ID, PROD_ID_SALT)
 }
 
 #[cfg(test)]

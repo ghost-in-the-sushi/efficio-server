@@ -27,7 +27,7 @@ fn gen_auth(rng: &mut rand::rngs::ThreadRng) -> String {
     format!("{:x}", HexView::from(&auth))
 }
 
-pub fn save_user(c: &Connection, user: &User) -> Result<ConnectionToken> {
+pub fn save_user(c: &mut Connection, user: &User) -> Result<ConnectionToken> {
     let norm_username = user.username.to_lowercase();
     if c.hexists(USERS_LIST, &norm_username)? {
         Err(ServerError::new(
@@ -40,7 +40,7 @@ pub fn save_user(c: &Connection, user: &User) -> Result<ConnectionToken> {
         let salt_pwd = rng.gen::<u64>().to_string();
         let hashed_pwd = db::salts::hash(&user.password, &salt_pwd);
         let hashed_mail = db::salts::hash(&user.email, &salt_mail);
-        let user_id = db::salts::get_next_user_id(&c)?;
+        let user_id = db::salts::get_next_user_id(c)?;
         c.hset_multiple(
             &user_key(&user_id),
             &[
@@ -53,19 +53,19 @@ pub fn save_user(c: &Connection, user: &User) -> Result<ConnectionToken> {
         )?;
         c.hset(USERS_LIST, &norm_username, user_id.to_string())?;
         let auth = gen_auth(&mut rng);
-        db::sessions::store_session(&c, &auth, &user_id)?;
+        db::sessions::store_session(c, &auth, &user_id)?;
         Ok(ConnectionToken::new(auth.into(), user_id.to_string()))
     }
 }
 
-pub fn delete_user(c: &Connection, auth: &Auth, wanted_user_id: &UserId) -> Result<()> {
-    let user_id = db::sessions::get_user_id(&c, auth)?;
+pub fn delete_user(c: &mut Connection, auth: &Auth, wanted_user_id: &UserId) -> Result<()> {
+    let user_id = db::sessions::get_user_id(c, auth)?;
     if user_id == *wanted_user_id {
         let user_key = user_key(&user_id);
         let username: String = c.hget(&user_key, USER_NAME)?;
-        db::stores::delete_all_user_stores(&c, &auth)?;
+        db::stores::delete_all_user_stores(c, &auth)?;
         c.hdel(USERS_LIST, &username.to_lowercase())?;
-        db::sessions::delete_all_user_sessions(&c, auth)?;
+        db::sessions::delete_all_user_sessions(c, auth)?;
         Ok(c.del(&user_key)?)
     } else {
         Err(ServerError::new(
@@ -75,7 +75,7 @@ pub fn delete_user(c: &Connection, auth: &Auth, wanted_user_id: &UserId) -> Resu
     }
 }
 
-pub fn login(c: &Connection, auth_info: &AuthInfo) -> Result<ConnectionToken> {
+pub fn login(c: &mut Connection, auth_info: &AuthInfo) -> Result<ConnectionToken> {
     let user_id = UserId(
         c.hget(USERS_LIST, &auth_info.username.to_lowercase())
             .or_else(|_| {
@@ -92,7 +92,7 @@ pub fn login(c: &Connection, auth_info: &AuthInfo) -> Result<ConnectionToken> {
     if hashed_pwd == stored_pwd {
         let mut rng = rand::thread_rng();
         let auth = gen_auth(&mut rng);
-        db::sessions::store_session(&c, &auth, &user_id)?;
+        db::sessions::store_session(c, &auth, &user_id)?;
         Ok(ConnectionToken::new(auth, user_id.to_string()))
     } else {
         Err(ServerError::new(
@@ -116,9 +116,9 @@ pub mod tests {
         }
     }
 
-    pub fn store_user_for_test(c: &Connection) -> ConnectionToken {
+    pub fn store_user_for_test(c: &mut Connection) -> ConnectionToken {
         let user = gen_user();
-        let res = save_user(&c, &user);
+        let res = save_user(c, &user);
         if res.is_err() {
             dbg!(&res);
         }
@@ -129,8 +129,8 @@ pub mod tests {
     #[test]
     fn store_user_test() {
         let client = Client::open(get_db_addr().as_str()).unwrap();
-        let c = client.get_connection().unwrap();
-        let token = store_user_for_test(&c);
+        let mut c = client.get_connection().unwrap();
+        let token = store_user_for_test(&mut c);
         let user = gen_user();
         assert_eq!(Ok(true), c.exists(&format!("user:{}", HASH_1)));
         assert_eq!(Ok(true), c.exists(&format!("sessions:{}", HASH_1)));
@@ -151,16 +151,16 @@ pub mod tests {
     #[test]
     fn store_user_exists_test() {
         let client = Client::open(get_db_addr().as_str()).unwrap();
-        let c = client.get_connection().unwrap();
-        store_user_for_test(&c);
+        let mut c = client.get_connection().unwrap();
+        store_user_for_test(&mut c);
         let mut user = gen_user();
-        let res = save_user(&c, &user);
+        let res = save_user(&mut c, &user);
         if res.is_ok() {
             dbg!(&res);
         }
         assert_eq!(false, res.is_ok());
         user.username = "ToTo".to_string(); // username uniqueness should be case insensitive
-        let res = save_user(&c, &user);
+        let res = save_user(&mut c, &user);
         if res.is_ok() {
             dbg!(&res);
         }
@@ -170,14 +170,14 @@ pub mod tests {
     #[test]
     fn login_test() {
         let client = Client::open(get_db_addr().as_str()).unwrap();
-        let c = client.get_connection().unwrap();
-        store_user_for_test(&c);
+        let mut c = client.get_connection().unwrap();
+        store_user_for_test(&mut c);
 
         let login_data = AuthInfo {
             username: "toto".to_string(),
             password: "pwd".to_string(),
         };
-        let res = login(&c, &login_data);
+        let res = login(&mut c, &login_data);
         if res.is_err() {
             dbg!(&res);
         }
@@ -187,7 +187,7 @@ pub mod tests {
             username: "toto".to_string(),
             password: "pwdb".to_string(),
         };
-        let res = login(&c, &login_data);
+        let res = login(&mut c, &login_data);
         if res.is_ok() {
             dbg!(&res);
         }
@@ -197,7 +197,7 @@ pub mod tests {
             username: "tato".to_string(),
             password: "pwd".to_string(),
         };
-        let res = login(&c, &login_data);
+        let res = login(&mut c, &login_data);
         if res.is_ok() {
             dbg!(&res);
         }
@@ -207,24 +207,30 @@ pub mod tests {
     #[test]
     fn delete_user_test() {
         let client = Client::open(get_db_addr().as_str()).unwrap();
-        let c = client.get_connection().unwrap();
-        let token = store_user_for_test(&c);
+        let mut c = client.get_connection().unwrap();
+        let token = store_user_for_test(&mut c);
         let auth = Auth(&token.session_token);
-        assert_eq!(Ok(()), delete_user(&c, &auth, &UserId(HASH_1.to_owned())));
+        assert_eq!(
+            Ok(()),
+            delete_user(&mut c, &auth, &UserId(HASH_1.to_owned()))
+        );
         assert_eq!(Ok(false), c.exists(USERS_LIST));
         assert_eq!(Ok(false), c.exists(&format!("user:{}", HASH_1)));
 
-        store_user_for_test(&c); // create toto user as user:2
+        store_user_for_test(&mut c); // create toto user as user:2
         let mut user = gen_user();
         user.username = "tata".to_string();
-        let res = save_user(&c, &user); // create tata user as user:3
+        let res = save_user(&mut c, &user); // create tata user as user:3
         if res.is_err() {
             dbg!(&res);
         }
         assert_eq!(true, res.is_ok());
         let token = res.unwrap();
         let auth = Auth(&token.session_token);
-        assert_eq!(Ok(()), delete_user(&c, &auth, &UserId(HASH_3.to_owned()))); // delete tata
+        assert_eq!(
+            Ok(()),
+            delete_user(&mut c, &auth, &UserId(HASH_3.to_owned()))
+        ); // delete tata
         assert_eq!(Ok(false), c.hexists(USERS_LIST, "tata"));
         assert_eq!(Ok(true), c.hexists(USERS_LIST, "toto"));
         assert_eq!(Ok(false), c.exists(&format!("user:{}", HASH_1)));

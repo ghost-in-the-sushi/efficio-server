@@ -25,8 +25,12 @@ pub(crate) fn verify_permission(wanted_user_id: &UserId, user_id: &UserId) -> Re
     }
 }
 
-pub(crate) fn verify_permission_auth(c: &Connection, auth: &Auth, user_id: &UserId) -> Result<()> {
-    let wanted_user_id = sessions::get_user_id(&c, &auth)?;
+pub(crate) fn verify_permission_auth(
+    c: &mut Connection,
+    auth: &Auth,
+    user_id: &UserId,
+) -> Result<()> {
+    let wanted_user_id = sessions::get_user_id(c, &auth)?;
     verify_permission(&wanted_user_id, &user_id)
 }
 
@@ -40,5 +44,4 @@ mod tests {
             DB_NUM.fetch_add(1, Ordering::SeqCst)
         )
     }
-
 }

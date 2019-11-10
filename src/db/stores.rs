@@ -19,27 +19,27 @@ fn user_stores_list_key(user_id: &UserId) -> String {
     format!("stores:{}", **user_id)
 }
 
-pub fn get_store_owner(c: &Connection, store_id: &StoreId) -> Result<UserId> {
+pub fn get_store_owner(c: &mut Connection, store_id: &StoreId) -> Result<UserId> {
     Ok(UserId(c.hget(&store_key(&store_id), STORE_OWNER)?))
 }
 
-pub fn list_store(c: &Connection, auth: &Auth, store_id: &StoreId) -> Result<Store> {
-    let user_id = db::sessions::get_user_id(&c, &auth)?;
+pub fn list_store(c: &mut Connection, auth: &Auth, store_id: &StoreId) -> Result<Store> {
+    let user_id = db::sessions::get_user_id(c, &auth)?;
     let store_key = store_key(&store_id);
-    db::verify_permission(&user_id, &get_store_owner(&c, &store_id)?)?;
+    db::verify_permission(&user_id, &get_store_owner(c, &store_id)?)?;
     Ok(Store::new(
         store_id.to_string(),
         c.hget(&store_key, STORE_NAME)?,
-        db::aisles::get_aisles_in_store(&c, &store_id)?,
+        db::aisles::get_aisles_in_store(c, &store_id)?,
     ))
 }
 
-pub fn save_store(c: &Connection, auth: &Auth, name: &str) -> Result<StoreId> {
-    let store_id = db::salts::get_next_store_id(&c)?;
-    let user_id = db::sessions::get_user_id(&c, &auth)?;
+pub fn save_store(c: &mut Connection, auth: &Auth, name: &str) -> Result<StoreId> {
+    let store_id = db::salts::get_next_store_id(c)?;
+    let user_id = db::sessions::get_user_id(c, &auth)?;
     let store_key = store_key(&store_id);
     let user_stores_key = user_stores_list_key(&user_id);
-    transaction(c, &[&store_key, &user_stores_key], |pipe| {
+    transaction(c, &[&store_key, &user_stores_key], |c, pipe| {
         pipe.hset(&store_key, STORE_NAME, name)
             .ignore()
             .hset(&store_key, STORE_OWNER, user_id.to_string())
@@ -51,14 +51,19 @@ pub fn save_store(c: &Connection, auth: &Auth, name: &str) -> Result<StoreId> {
     Ok(store_id)
 }
 
-pub fn edit_store(c: &Connection, auth: &Auth, store_id: &StoreId, new_name: &str) -> Result<()> {
-    let owner_id = get_store_owner(&c, &store_id)?;
-    db::verify_permission_auth(&c, &auth, &owner_id)?;
+pub fn edit_store(
+    c: &mut Connection,
+    auth: &Auth,
+    store_id: &StoreId,
+    new_name: &str,
+) -> Result<()> {
+    let owner_id = get_store_owner(c, &store_id)?;
+    db::verify_permission_auth(c, &auth, &owner_id)?;
     Ok(c.hset(&store_key(&store_id), STORE_NAME, new_name)?)
 }
 
-pub fn get_all_stores(c: &Connection, auth: &Auth) -> Result<Vec<StoreLight>> {
-    let user_id = db::sessions::get_user_id(&c, &auth)?;
+pub fn get_all_stores(c: &mut Connection, auth: &Auth) -> Result<Vec<StoreLight>> {
+    let user_id = db::sessions::get_user_id(c, &auth)?;
     let all_store_ids: Vec<String> = c.smembers(&user_stores_list_key(&user_id))?;
     Ok(all_store_ids
         .into_iter()
@@ -71,13 +76,13 @@ pub fn get_all_stores(c: &Connection, auth: &Auth) -> Result<Vec<StoreLight>> {
         .collect())
 }
 
-pub fn delete_store(c: &Connection, auth: &Auth, store_id: &StoreId) -> Result<()> {
-    let owner_id = get_store_owner(&c, &store_id)?;
-    db::verify_permission_auth(&c, &auth, &owner_id)?;
+pub fn delete_store(c: &mut Connection, auth: &Auth, store_id: &StoreId) -> Result<()> {
+    let owner_id = get_store_owner(c, &store_id)?;
+    db::verify_permission_auth(c, &auth, &owner_id)?;
     let store_key = store_key(&store_id);
     let user_stores_key = user_stores_list_key(&owner_id);
-    transaction(c, &[&store_key, &user_stores_key], |mut pipe| {
-        db::aisles::transaction_purge_aisles_in_store(&c, &mut pipe, &store_id)?;
+    transaction(c, &[&store_key, &user_stores_key], |c, mut pipe| {
+        db::aisles::transaction_purge_aisles_in_store(c, &mut pipe, &store_id)?;
         pipe.srem(&user_stores_key, store_id.to_string())
             .ignore()
             .del(&store_key)
@@ -86,13 +91,13 @@ pub fn delete_store(c: &Connection, auth: &Auth, store_id: &StoreId) -> Result<(
     Ok(())
 }
 
-pub fn delete_all_user_stores(c: &Connection, auth: &Auth) -> Result<()> {
-    let user_id = db::sessions::get_user_id(&c, &auth)?;
+pub fn delete_all_user_stores(c: &mut Connection, auth: &Auth) -> Result<()> {
+    let user_id = db::sessions::get_user_id(c, &auth)?;
     let user_stores_key = user_stores_list_key(&user_id);
     let stores: Option<Vec<String>> = c.smembers(&user_stores_key)?;
     if let Some(stores) = stores {
         for store_id in stores {
-            delete_store(&c, &auth, &StoreId::new(store_id))?;
+            delete_store(c, &auth, &StoreId::new(store_id))?;
         }
     }
     Ok(())
@@ -108,10 +113,10 @@ pub mod tests {
     pub const STORE_TEST_NAME: &str = "storetest";
     const NEW_STORE_NAME: &str = "new_store_name";
 
-    pub fn save_store_for_test(c: &Connection) -> StoreId {
-        store_user_for_test(&c);
-        store_session_for_test(&c, &AUTH);
-        let res = save_store(&c, &AUTH, STORE_TEST_NAME);
+    pub fn save_store_for_test(c: &mut Connection) -> StoreId {
+        store_user_for_test(c);
+        store_session_for_test(c, &AUTH);
+        let res = save_store(c, &AUTH, STORE_TEST_NAME);
         assert_eq!(Ok(StoreId::new(HASH_1.to_owned())), res);
         res.unwrap()
     }
@@ -119,8 +124,8 @@ pub mod tests {
     #[test]
     fn save_store_test() {
         let client = Client::open(get_db_addr().as_str()).unwrap();
-        let c = client.get_connection().unwrap();
-        save_store_for_test(&c);
+        let mut c = client.get_connection().unwrap();
+        save_store_for_test(&mut c);
         let store_key = store_key(&StoreId::new(HASH_1.to_owned()));
         assert_eq!(Ok(true), c.exists(&store_key));
         assert_eq!(
@@ -139,11 +144,16 @@ pub mod tests {
     #[test]
     fn edit_store_test() {
         let client = Client::open(get_db_addr().as_str()).unwrap();
-        let c = client.get_connection().unwrap();
-        save_store_for_test(&c);
+        let mut c = client.get_connection().unwrap();
+        save_store_for_test(&mut c);
         assert_eq!(
             Ok(()),
-            edit_store(&c, &AUTH, &StoreId::new(HASH_1.to_owned()), NEW_STORE_NAME)
+            edit_store(
+                &mut c,
+                &AUTH,
+                &StoreId::new(HASH_1.to_owned()),
+                NEW_STORE_NAME
+            )
         );
         let store_key = store_key(&StoreId::new(HASH_1.to_owned()));
         assert_eq!(
@@ -155,24 +165,24 @@ pub mod tests {
     #[test]
     fn get_all_stores_test() {
         let client = Client::open(get_db_addr().as_str()).unwrap();
-        let c = client.get_connection().unwrap();
-        save_store_for_test(&c);
+        let mut c = client.get_connection().unwrap();
+        save_store_for_test(&mut c);
         assert_eq!(
             Ok(StoreId::new(HASH_2.to_owned())),
-            save_store(&c, &AUTH, NEW_STORE_NAME)
+            save_store(&mut c, &AUTH, NEW_STORE_NAME)
         );
         let expected_stores = vec![
             StoreLight::new(STORE_TEST_NAME.to_owned(), HASH_1.to_owned()),
             StoreLight::new(NEW_STORE_NAME.to_owned(), HASH_2.to_owned()),
         ];
-        assert_eq!(Ok(expected_stores), get_all_stores(&c, &AUTH));
+        assert_eq!(Ok(expected_stores), get_all_stores(&mut c, &AUTH));
     }
 
     #[test]
     fn list_store_test() {
         let client = Client::open(get_db_addr().as_str()).unwrap();
-        let c = client.get_connection().unwrap();
-        db::aisles::tests::get_aisles_in_store_for_test(&c);
+        let mut c = client.get_connection().unwrap();
+        db::aisles::tests::get_aisles_in_store_for_test(&mut c);
         let expected = Store::new(
             HASH_1.to_owned(),
             STORE_TEST_NAME.to_owned(),
@@ -217,22 +227,22 @@ pub mod tests {
         );
         assert_eq!(
             Ok(expected),
-            list_store(&c, &AUTH, &StoreId::new(HASH_1.to_owned()))
+            list_store(&mut c, &AUTH, &StoreId::new(HASH_1.to_owned()))
         );
     }
 
     #[test]
     fn delete_store_test() {
         let client = Client::open(get_db_addr().as_str()).unwrap();
-        let c = client.get_connection().unwrap();
+        let mut c = client.get_connection().unwrap();
 
-        db::aisles::tests::save_aisle_for_test(&c);
-        db::aisles::tests::add_2nd_aisle(&c);
-        db::aisles::tests::fill_aisles(&c);
+        db::aisles::tests::save_aisle_for_test(&mut c);
+        db::aisles::tests::add_2nd_aisle(&mut c);
+        db::aisles::tests::fill_aisles(&mut c);
 
         assert_eq!(
             Ok(()),
-            delete_store(&c, &AUTH, &StoreId::new(HASH_1.to_owned()))
+            delete_store(&mut c, &AUTH, &StoreId::new(HASH_1.to_owned()))
         );
         assert_eq!(
             Ok(false),

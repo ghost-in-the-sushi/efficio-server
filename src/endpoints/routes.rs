@@ -45,15 +45,15 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
     let nuke = warp::path("nuke")
         .and(warp::path::end())
         .and(get_connection())
-        .and_then(move |c: PooledConnection| misc::nuke(&*c));
+        .and_then(move |mut c: PooledConnection| misc::nuke(&mut *c));
 
     // POST /user
     let create_user = warp::path("user")
         .and(warp::path::end())
         .and(warp::body::json())
         .and(get_connection())
-        .and_then(move |user: User, c: PooledConnection| {
-            user::create_user(&user, &*c)
+        .and_then(move |user: User, mut c: PooledConnection| {
+            user::create_user(&user, &mut *c)
                 .and_then(|token| Ok(warp::reply::json(&token)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -63,8 +63,8 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::path::end())
         .and(warp::body::json())
         .and(get_connection())
-        .and_then(move |auth_info: AuthInfo, c: PooledConnection| {
-            session::login(&auth_info, &*c)
+        .and_then(move |auth_info: AuthInfo, mut c: PooledConnection| {
+            session::login(&auth_info, &mut *c)
                 .and_then(|token| Ok(warp::reply::json(&token)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -74,8 +74,8 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(get_connection())
-        .and_then(move |id: String, auth: String, c: PooledConnection| {
-            session::logout(&auth, &id, &*c)
+        .and_then(move |id: String, auth: String, mut c: PooledConnection| {
+            session::logout(&auth, &id, &mut *c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -85,8 +85,8 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(get_connection())
-        .and_then(move |id: String, auth: String, c: PooledConnection| {
-            user::delete_user(&auth, &id, &*c)
+        .and_then(move |id: String, auth: String, mut c: PooledConnection| {
+            user::delete_user(&auth, &id, &mut *c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -97,8 +97,8 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
         .and(get_connection())
-        .and_then(move |auth, data: NameData, c: PooledConnection| {
-            store::create_store(auth, &data, &*c)
+        .and_then(move |auth, data: NameData, mut c: PooledConnection| {
+            store::create_store(auth, &data, &mut *c)
                 .and_then(|store_id| Ok(warp::reply::json(&store_id)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -109,8 +109,8 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
         .and(get_connection())
-        .and_then(move |id, auth, data: NameData, c: PooledConnection| {
-            store::edit_store(auth, id, &data, &*c)
+        .and_then(move |id, auth, data: NameData, mut c: PooledConnection| {
+            store::edit_store(auth, id, &data, &mut *c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -121,11 +121,13 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
         .and(get_connection())
-        .and_then(move |store_id, auth, data: NameData, c: PooledConnection| {
-            aisle::create_aisle(auth, store_id, &data, &*c)
-                .and_then(|aisle| Ok(warp::reply::json(&aisle)))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
-        });
+        .and_then(
+            move |store_id, auth, data: NameData, mut c: PooledConnection| {
+                aisle::create_aisle(auth, store_id, &data, &mut *c)
+                    .and_then(|aisle| Ok(warp::reply::json(&aisle)))
+                    .or_else(|e| Err(warp::reject::custom(e.compat())))
+            },
+        );
 
     // PUT /aisle/<id>
     let edit_aisle = path!("aisle" / String)
@@ -133,11 +135,13 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
         .and(get_connection())
-        .and_then(move |aisle_id, auth, data: NameData, c: PooledConnection| {
-            aisle::rename_aisle(auth, aisle_id, &data, &*c)
-                .and_then(|()| Ok(warp::reply()))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
-        });
+        .and_then(
+            move |aisle_id, auth, data: NameData, mut c: PooledConnection| {
+                aisle::rename_aisle(auth, aisle_id, &data, &mut *c)
+                    .and_then(|()| Ok(warp::reply()))
+                    .or_else(|e| Err(warp::reject::custom(e.compat())))
+            },
+        );
 
     // POST /aisle/<id>/product
     let create_product = path!("aisle" / String / "product")
@@ -145,11 +149,13 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
         .and(get_connection())
-        .and_then(move |aisle_id, auth, data: NameData, c: PooledConnection| {
-            product::create_product(auth, aisle_id, &data, &*c)
-                .and_then(|product| Ok(warp::reply::json(&product)))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
-        });
+        .and_then(
+            move |aisle_id, auth, data: NameData, mut c: PooledConnection| {
+                product::create_product(auth, aisle_id, &data, &mut *c)
+                    .and_then(|product| Ok(warp::reply::json(&product)))
+                    .or_else(|e| Err(warp::reject::custom(e.compat())))
+            },
+        );
 
     // PUT /product/<id>
     let edit_product = path!("product" / String)
@@ -158,8 +164,8 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::body::json())
         .and(get_connection())
         .and_then(
-            move |product_id, auth, data: EditProduct, c: PooledConnection| {
-                product::edit_product(auth, product_id, &data, &*c)
+            move |product_id, auth, data: EditProduct, mut c: PooledConnection| {
+                product::edit_product(auth, product_id, &data, &mut *c)
                     .and_then(|()| Ok(warp::reply()))
                     .or_else(|e| Err(warp::reject::custom(e.compat())))
             },
@@ -170,8 +176,8 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(get_connection())
-        .and_then(move |auth, c: PooledConnection| {
-            store::list_stores(auth, &*c)
+        .and_then(move |auth, mut c: PooledConnection| {
+            store::list_stores(auth, &mut *c)
                 .and_then(|stores| Ok(warp::reply::json(&stores)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -181,8 +187,8 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(get_connection())
-        .and_then(move |store_id, auth, c: PooledConnection| {
-            store::list_store(auth, store_id, &*c)
+        .and_then(move |store_id, auth, mut c: PooledConnection| {
+            store::list_store(auth, store_id, &mut *c)
                 .and_then(|store| Ok(warp::reply::json(&store)))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -192,8 +198,8 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(get_connection())
-        .and_then(move |product_id, auth, c: PooledConnection| {
-            product::delete_product(auth, product_id, &*c)
+        .and_then(move |product_id, auth, mut c: PooledConnection| {
+            product::delete_product(auth, product_id, &mut *c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -203,8 +209,8 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(get_connection())
-        .and_then(move |aisle_id, auth, c: PooledConnection| {
-            aisle::delete_aisle(auth, aisle_id, &*c)
+        .and_then(move |aisle_id, auth, mut c: PooledConnection| {
+            aisle::delete_aisle(auth, aisle_id, &mut *c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -214,8 +220,8 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::path::end())
         .and(warp::header::<String>(HEADER_AUTH))
         .and(get_connection())
-        .and_then(move |store_id, auth, c: PooledConnection| {
-            store::delete_store(auth, store_id, &*c)
+        .and_then(move |store_id, auth, mut c: PooledConnection| {
+            store::delete_store(auth, store_id, &mut *c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
@@ -226,8 +232,8 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and(warp::header::<String>(HEADER_AUTH))
         .and(warp::body::json())
         .and(get_connection())
-        .and_then(move |auth, data: EditWeight, c: PooledConnection| {
-            misc::change_sort_weight(auth, &data, &*c)
+        .and_then(move |auth, data: EditWeight, mut c: PooledConnection| {
+            misc::change_sort_weight(auth, &data, &mut *c)
                 .and_then(|()| Ok(warp::reply()))
                 .or_else(|e| Err(warp::reject::custom(e.compat())))
         });
