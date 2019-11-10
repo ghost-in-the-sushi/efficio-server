@@ -38,9 +38,9 @@ pub fn save_user(c: &mut Connection, user: &User) -> Result<ConnectionToken> {
         let mut rng = rand::thread_rng();
         let salt_mail = rng.gen::<u64>().to_string();
         let salt_pwd = rng.gen::<u64>().to_string();
-        let hashed_pwd = db::salts::hash(&user.password, &salt_pwd);
-        let hashed_mail = db::salts::hash(&user.email, &salt_mail);
-        let user_id = db::salts::get_next_user_id(c)?;
+        let hashed_pwd = db::ids::hash(&user.password, &salt_pwd);
+        let hashed_mail = db::ids::hash(&user.email, &salt_mail);
+        let user_id = db::ids::get_next_user_id(c)?;
         c.hset_multiple(
             &user_key(&user_id),
             &[
@@ -88,7 +88,7 @@ pub fn login(c: &mut Connection, auth_info: &AuthInfo) -> Result<ConnectionToken
     let user_key = user_key(&user_id);
     let salt_pwd: String = c.hget(&user_key, USER_SALT_P)?;
     let stored_pwd: String = c.hget(&user_key, USER_PWD)?;
-    let hashed_pwd = db::salts::hash(&auth_info.password, &salt_pwd);
+    let hashed_pwd = db::ids::hash(&auth_info.password, &salt_pwd);
     if hashed_pwd == stored_pwd {
         let mut rng = rand::thread_rng();
         let auth = gen_auth(&mut rng);
@@ -105,7 +105,7 @@ pub fn login(c: &mut Connection, auth_info: &AuthInfo) -> Result<ConnectionToken
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::db::{salts::tests::*, tests::*};
+    use crate::db::{ids::tests::*, tests::*};
     use fake_redis::FakeCient as Client;
 
     pub fn gen_user() -> User {

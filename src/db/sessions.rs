@@ -91,7 +91,7 @@ pub fn delete_all_user_sessions(c: &mut Connection, auth: &Auth) -> Result<()> {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::db::{salts::tests::*, tests::*};
+    use crate::db::{ids::tests::*, tests::*};
     use fake_redis::FakeCient as Client;
 
     pub const AUTH: Auth = Auth("tokenauth");

@@ -65,7 +65,7 @@ pub fn save_product(
     let aisle_owner = db::aisles::get_aisle_owner(c, &aisle_id)?;
     let user_id = db::sessions::get_user_id(c, &auth)?;
     db::verify_permission(&user_id, &aisle_owner)?;
-    let prod_id = db::salts::get_next_product_id(c)?;
+    let prod_id = db::ids::get_next_product_id();
     let prod_key = product_key(&prod_id);
     let prod_in_aisle_key = products_in_aisle_key(&aisle_id);
     let new_sort_weight = find_max_weight_in_aisle(c, &aisle_id)? + 1f32;
@@ -173,29 +173,28 @@ pub fn edit_product_sort_weight(
 pub mod tests {
     use super::*;
     use crate::db::sessions::tests::*;
-    use crate::db::{self, salts::tests::*, tests::*};
+    use crate::db::{self, ids::tests::HASH_1, tests::*};
     use fake_redis::FakeCient as Client;
 
     const NAME: &str = "product1";
     pub const RENAME: &str = "product2";
 
-    pub fn save_product_for_test(c: &mut Connection) {
+    pub fn save_product_for_test(c: &mut Connection) -> (AisleId, ProductId) {
         db::users::tests::store_user_for_test(c);
         db::sessions::tests::store_session_for_test(c, &AUTH);
         let store_id = db::stores::save_store(c, &AUTH, "MyStore").unwrap();
-        db::aisles::save_aisle(c, &AUTH, &store_id, db::aisles::tests::NAME).unwrap();
+        let aisle = db::aisles::save_aisle(c, &AUTH, &store_id, db::aisles::tests::NAME).unwrap();
         let expected = Product::new(
-            HASH_1.to_owned(),
+            "".to_owned(), // ignored in tests
             "product1".to_owned(),
             1,
             false,
             Unit::Unit,
             1f32,
         );
-        assert_eq!(
-            Ok(expected),
-            save_product(c, &AUTH, NAME, &AisleId(HASH_1.to_owned()))
-        );
+        let res = save_product(c, &AUTH, NAME, &AisleId(aisle.id().to_owned()));
+        assert_eq!(Ok(expected), res);
+        (aisle.id(), res.unwrap().id())
     }
 
     // create a store, a session with AUTH token, an aisle and put a product in it
@@ -203,10 +202,10 @@ pub mod tests {
     fn save_product_test() {
         let client = Client::open(get_db_addr().as_str()).unwrap();
         let mut c = client.get_connection().unwrap();
-        save_product_for_test(&mut c);
+        let (aisle_id, product_id) = save_product_for_test(&mut c);
 
         // check DB
-        let prod_key = product_key(&ProductId(HASH_1.to_owned()));
+        let prod_key = product_key(&product_id);
         assert_eq!(Ok(NAME.to_string()), c.hget(&prod_key, PROD_NAME));
         assert_eq!(Ok(1), c.hget(&prod_key, PROD_QTY));
         let sort: f32 = c.hget(&prod_key, PROD_SORT_WEIGHT).unwrap();
@@ -216,41 +215,27 @@ pub mod tests {
         assert_eq!(Ok(HASH_1.to_owned()), c.hget(&prod_key, PROD_OWNER));
         assert_eq!(
             Ok(true),
-            c.sismember(
-                &products_in_aisle_key(&AisleId(HASH_1.to_owned())),
-                HASH_1.to_owned(),
-            )
+            c.sismember(&products_in_aisle_key(&aisle_id), product_id.to_string(),)
         );
     }
 
-    fn add_2nd_product(c: &mut Connection) {
-        let expected = Product::new(
-            HASH_2.to_owned(),
-            RENAME.to_owned(),
-            1,
-            false,
-            Unit::Unit,
-            0f32,
-        );
-        assert_eq!(
-            Ok(expected),
-            save_product(c, &AUTH, RENAME, &AisleId(HASH_1.to_owned()))
-        );
+    fn add_2nd_product(c: &mut Connection, aisle_id: &AisleId) -> ProductId {
+        let expected = Product::new("".to_owned(), RENAME.to_owned(), 1, false, Unit::Unit, 0f32);
+        let res = save_product(c, &AUTH, RENAME, &aisle_id);
+        assert_eq!(Ok(expected), res);
+        res.unwrap().id()
     }
 
     #[test]
     fn modify_product_test() {
         let client = Client::open(get_db_addr().as_str()).unwrap();
         let mut c = client.get_connection().unwrap();
-        save_product_for_test(&mut c);
+        let (_, product_id) = save_product_for_test(&mut c);
         let data = EditProduct::new(Some(RENAME.to_owned()), Some(2), None, Some(true));
-        assert_eq!(
-            Ok(()),
-            modify_product(&mut c, &AUTH, &data, &ProductId(HASH_1.to_owned()))
-        );
+        assert_eq!(Ok(()), modify_product(&mut c, &AUTH, &data, &product_id));
 
         // check DB
-        let product_key = product_key(&ProductId(HASH_1.to_owned()));
+        let product_key = product_key(&product_id);
         let name: String = c.hget(&product_key, PROD_NAME).unwrap();
         assert_eq!(RENAME, &name);
         assert_eq!(Ok(2), c.hget(&product_key, PROD_QTY));
@@ -266,26 +251,12 @@ pub mod tests {
         let client = Client::open(get_db_addr().as_str()).unwrap();
         let mut c = client.get_connection().unwrap();
 
-        save_product_for_test(&mut c);
-        add_2nd_product(&mut c);
-        let res = get_products_in_aisle(&mut c, &AisleId(HASH_1.to_owned()));
+        let (aisle_id, _) = save_product_for_test(&mut c);
+        add_2nd_product(&mut c, &aisle_id);
+        let res = get_products_in_aisle(&mut c, &aisle_id);
         let expected = vec![
-            Product::new(
-                HASH_1.to_owned(),
-                NAME.to_owned(),
-                1,
-                false,
-                Unit::Unit,
-                0f32,
-            ),
-            Product::new(
-                HASH_2.to_owned(),
-                RENAME.to_owned(),
-                1,
-                false,
-                Unit::Unit,
-                0f32,
-            ),
+            Product::new("".to_owned(), NAME.to_owned(), 1, false, Unit::Unit, 0f32),
+            Product::new("".to_owned(), RENAME.to_owned(), 1, false, Unit::Unit, 0f32),
         ];
         assert_eq!(Ok(expected), res);
     }
@@ -295,8 +266,7 @@ pub mod tests {
         let client = Client::open(get_db_addr().as_str()).unwrap();
         let mut c = client.get_connection().unwrap();
 
-        save_product_for_test(&mut c);
-        let p = ProductId(HASH_1.to_owned());
+        let (_, p) = save_product_for_test(&mut c);
         assert_eq!(Ok(()), delete_product(&mut c, &AUTH, &p));
         assert_eq!(Ok(false), c.exists(&product_key(&p)));
     }
@@ -306,24 +276,17 @@ pub mod tests {
         let client = Client::open(get_db_addr().as_str()).unwrap();
         let mut c = client.get_connection().unwrap();
 
-        save_product_for_test(&mut c);
-        add_2nd_product(&mut c);
+        let (aisle_id, product_id) = save_product_for_test(&mut c);
+        let p2 = add_2nd_product(&mut c, &aisle_id);
         let mut pipe = Pipeline::new(c.db);
         pipe.atomic();
-        let aisle_id = AisleId(HASH_1.to_owned());
         assert_eq!(
             Ok(()),
             transaction_purge_products_in_aisle(&mut c, &mut pipe, &aisle_id)
         );
         assert_eq!(Ok(()), pipe.query(&c));
-        assert_eq!(
-            Ok(false),
-            c.exists(&product_key(&ProductId(HASH_1.to_owned())))
-        );
-        assert_eq!(
-            Ok(false),
-            c.exists(&product_key(&ProductId(HASH_2.to_owned())))
-        );
+        assert_eq!(Ok(false), c.exists(&product_key(&product_id)));
+        assert_eq!(Ok(false), c.exists(&product_key(&p2)));
         assert_eq!(Ok(false), c.exists(&products_in_aisle_key(&aisle_id)));
     }
 
@@ -331,7 +294,7 @@ pub mod tests {
     fn edit_product_sort_weight_test() {
         let client = Client::open(get_db_addr().as_str()).unwrap();
         let mut c = client.get_connection().unwrap();
-        save_product_for_test(&mut c);
+        let (_, product_id) = save_product_for_test(&mut c);
         let mut pipe = Pipeline::new(c.db);
         pipe.atomic();
         assert_eq!(
@@ -340,16 +303,13 @@ pub mod tests {
                 &mut c,
                 &mut pipe,
                 &AUTH,
-                &ProductItemWeight::new(HASH_1.to_owned(), 2.0f32)
+                &ProductItemWeight::new(product_id.to_string(), 2.0f32)
             )
         );
         assert_eq!(Ok(()), pipe.query(&c));
         assert_eq!(
             Ok(2.0f32),
-            c.hget(
-                &product_key(&ProductId(HASH_1.to_owned())),
-                PROD_SORT_WEIGHT
-            )
+            c.hget(&product_key(&product_id), PROD_SORT_WEIGHT)
         );
     }
 }

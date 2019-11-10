@@ -1,6 +1,7 @@
 use argon2rs;
 use hex_view::HexView;
 use rand::{self, Rng};
+use uuid::Uuid;
 
 #[cfg(test)]
 use fake_redis::FakeConnection as Connection;
@@ -11,14 +12,8 @@ use crate::error::{self, *};
 use crate::types::*;
 
 const NEXT_USER_ID: &str = "next_user_id";
-const NEXT_STORE_ID: &str = "next_store_id";
-const NEXT_AISLE_ID: &str = "next_aisle_id";
-const NEXT_PROD_ID: &str = "next_product_id";
 
 const USER_ID_SALT: &str = "user_id_salt";
-const STORE_ID_SALT: &str = "store_id_salt";
-const AISLE_ID_SALT: &str = "aisle_id_salt";
-const PROD_ID_SALT: &str = "product_id_salt";
 
 pub fn hash(data: &str, salt: &str) -> String {
     format!(
@@ -61,16 +56,31 @@ pub fn get_next_user_id(c: &mut Connection) -> Result<UserId> {
     get_next_id(c, NEXT_USER_ID, USER_ID_SALT)
 }
 
-pub fn get_next_store_id(c: &mut Connection) -> Result<StoreId> {
-    get_next_id(c, NEXT_STORE_ID, STORE_ID_SALT)
+pub fn get_next_store_id() -> StoreId {
+    StoreId::new(
+        Uuid::new_v4()
+            .to_hyphenated_ref()
+            .encode_lower(&mut Uuid::encode_buffer())
+            .to_string(),
+    )
 }
 
-pub fn get_next_aisle_id(c: &mut Connection) -> Result<AisleId> {
-    get_next_id(c, NEXT_AISLE_ID, AISLE_ID_SALT)
+pub fn get_next_aisle_id() -> AisleId {
+    AisleId(
+        Uuid::new_v4()
+            .to_hyphenated_ref()
+            .encode_lower(&mut Uuid::encode_buffer())
+            .to_string(),
+    )
 }
 
-pub fn get_next_product_id(c: &mut Connection) -> Result<ProductId> {
-    get_next_id(c, NEXT_PROD_ID, PROD_ID_SALT)
+pub fn get_next_product_id() -> ProductId {
+    ProductId(
+        Uuid::new_v4()
+            .to_hyphenated_ref()
+            .encode_lower(&mut Uuid::encode_buffer())
+            .to_string(),
+    )
 }
 
 #[cfg(test)]

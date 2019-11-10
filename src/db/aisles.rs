@@ -53,7 +53,7 @@ pub fn save_aisle(
     store_id: &StoreId,
     name: &str,
 ) -> Result<Aisle> {
-    let aisle_id = db::salts::get_next_aisle_id(c)?;
+    let aisle_id = db::ids::get_next_aisle_id();
     let aisle_key = aisle_key(&aisle_id);
     let aisle_in_store_key = aisles_in_store_key(&store_id);
     let user_id = db::sessions::get_user_id(c, &auth)?;
@@ -148,7 +148,7 @@ pub fn edit_aisle_sort_weight(
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::db::{self, salts::tests::*, sessions::tests::*, stores::tests::*, tests::*};
+    use crate::db::{self, sessions::tests::*, stores::tests::*, tests::*};
     use fake_redis::FakeCient as Client;
 
     pub const NAME: &str = "Aisle1";
@@ -162,11 +162,12 @@ pub mod tests {
         super::aisle_key(&aisle_id)
     }
 
-    pub fn save_aisle_for_test(c: &mut Connection) -> StoreId {
+    pub fn save_aisle_for_test(c: &mut Connection) -> (StoreId, AisleId) {
         let store_id = save_store_for_test(c);
-        let expected = Aisle::new(HASH_1.to_owned(), NAME.to_owned(), 0f32, vec![]);
-        assert_eq!(Ok(expected), save_aisle(c, &AUTH, &store_id, NAME));
-        store_id
+        let expected = Aisle::new("".to_owned(), NAME.to_owned(), 0f32, vec![]);
+        let res = save_aisle(c, &AUTH, &store_id, NAME);
+        assert_eq!(Ok(expected), res);
+        (store_id, AisleId(res.unwrap().id().to_string()))
     }
 
     // create a user, a session with AUTH as token, a store and an aisle
@@ -174,19 +175,18 @@ pub mod tests {
     fn save_aisle_test() {
         let client = Client::open(get_db_addr().as_str()).unwrap();
         let mut c = client.get_connection().unwrap();
-        let store_id = save_aisle_for_test(&mut c);
+        let (store_id, aisle_id) = save_aisle_for_test(&mut c);
 
         // check DB
-        let key = aisle_key(&AisleId(HASH_1.to_owned()));
+        let key = aisle_key(&aisle_id);
         assert_eq!(Ok(true), c.exists(&key));
         assert_eq!(Ok(true), c.exists(&aisles_in_store_key(&store_id)));
         assert_eq!(Ok(NAME.to_string()), c.hget(&key, AISLE_NAME));
         let weight: f32 = c.hget(&key, AISLE_WEIGHT).unwrap();
         assert!(weight - 1.0f32 < std::f32::EPSILON);
-        assert_eq!(Ok(HASH_1.to_owned()), c.hget(&key, AISLE_STORE));
         assert_eq!(
             Ok(true),
-            c.sismember(&aisles_in_store_key(&store_id), HASH_1.to_owned())
+            c.sismember(&aisles_in_store_key(&store_id), aisle_id.to_string())
         );
     }
 
@@ -194,78 +194,71 @@ pub mod tests {
     fn edit_aisle_test() {
         let client = Client::open(get_db_addr().as_str()).unwrap();
         let mut c = client.get_connection().unwrap();
-        let aid = AisleId(HASH_1.to_owned());
-        save_aisle_for_test(&mut c);
+        let (_, aid) = save_aisle_for_test(&mut c);
         assert_eq!(Ok(()), edit_aisle(&mut c, &AUTH, &aid, RENAMED));
 
         let name: String = c.hget(&aisle_key(&aid), AISLE_NAME).unwrap();
         assert_eq!(RENAMED, name.as_str());
     }
 
-    pub fn add_2nd_aisle(c: &mut Connection) {
-        let aid = AisleId(HASH_2.to_owned());
-        assert_eq!(Ok(false), c.exists(&aisle_key(&aid)));
-        let expected = Aisle::new(HASH_2.to_owned(), RENAMED.to_owned(), 0f32, vec![]);
-        assert_eq!(
-            Ok(expected),
-            save_aisle(c, &AUTH, &StoreId::new(HASH_1.to_owned()), RENAMED)
-        );
+    pub fn add_2nd_aisle(c: &mut Connection, store_id: &StoreId) -> AisleId {
+        let expected = Aisle::new("".to_owned(), RENAMED.to_owned(), 0f32, vec![]);
+        let res = save_aisle(c, &AUTH, &store_id, RENAMED);
+        assert_eq!(Ok(expected), res);
+        let aid = AisleId(res.unwrap().id().to_string());
         assert_eq!(Ok(true), c.exists(&aisle_key(&aid)));
+        aid
     }
 
-    pub fn fill_aisles(c: &mut Connection) {
-        db::products::save_product(c, &AUTH, "product1", &AisleId(HASH_1.to_owned())).unwrap();
-        db::products::save_product(c, &AUTH, "product2", &AisleId(HASH_1.to_owned())).unwrap();
-        db::products::save_product(c, &AUTH, "product3", &AisleId(HASH_2.to_owned())).unwrap();
+    pub fn fill_aisles(
+        c: &mut Connection,
+        aisle1: &AisleId,
+        aisle2: &AisleId,
+    ) -> (ProductId, ProductId, ProductId) {
+        let p1 = db::products::save_product(c, &AUTH, "product1", &aisle1).unwrap();
+        let p2 = db::products::save_product(c, &AUTH, "product2", &aisle1).unwrap();
+        let p3 = db::products::save_product(c, &AUTH, "product3", &aisle2).unwrap();
 
-        assert_eq!(
-            Ok(true),
-            c.exists(&db::products::product_key(&ProductId(HASH_1.to_owned())))
-        );
-        assert_eq!(
-            Ok(true),
-            c.exists(&db::products::product_key(&ProductId(HASH_2.to_owned())))
-        );
-        assert_eq!(
-            Ok(true),
-            c.exists(&db::products::product_key(&ProductId(HASH_3.to_owned())))
-        );
+        assert_eq!(Ok(true), c.exists(&db::products::product_key(&p1.id())));
+        assert_eq!(Ok(true), c.exists(&db::products::product_key(&p2.id())));
+        assert_eq!(Ok(true), c.exists(&db::products::product_key(&p3.id())));
         assert_eq!(
             Ok(true),
             c.sismember(
-                &db::products::products_in_aisle_key(&AisleId(HASH_1.to_owned())),
-                HASH_1.to_owned()
+                &db::products::products_in_aisle_key(&aisle1),
+                p1.id().to_string(),
             )
         );
         assert_eq!(
             Ok(true),
             c.sismember(
-                &db::products::products_in_aisle_key(&AisleId(HASH_1.to_owned())),
-                HASH_2.to_owned()
+                &db::products::products_in_aisle_key(&aisle1),
+                p2.id().to_string(),
             )
         );
         assert_eq!(
             Ok(true),
             c.sismember(
-                &db::products::products_in_aisle_key(&AisleId(HASH_2.to_owned())),
-                HASH_3.to_owned()
+                &db::products::products_in_aisle_key(&aisle2),
+                p3.id().to_string()
             )
         );
+        (p1.id(), p2.id(), p3.id())
     }
 
-    pub fn get_aisles_in_store_for_test(c: &mut Connection) {
-        save_aisle_for_test(c);
-        add_2nd_aisle(c);
-        fill_aisles(c);
+    pub fn get_aisles_in_store_for_test(c: &mut Connection) -> StoreId {
+        let (store_id, aisle_id) = save_aisle_for_test(c);
+        let aisle_id2 = add_2nd_aisle(c, &store_id);
+        fill_aisles(c, &aisle_id, &aisle_id2);
 
         let expected = vec![
             Aisle::new(
-                HASH_1.to_owned(),
+                "".to_owned(),
                 NAME.to_owned(),
                 0f32,
                 vec![
                     Product::new(
-                        HASH_1.to_owned(),
+                        "".to_string(),
                         "product1".to_owned(),
                         1,
                         false,
@@ -273,7 +266,7 @@ pub mod tests {
                         0f32,
                     ),
                     Product::new(
-                        HASH_2.to_owned(),
+                        "".to_string(),
                         "product2".to_owned(),
                         1,
                         false,
@@ -283,11 +276,11 @@ pub mod tests {
                 ],
             ),
             Aisle::new(
-                HASH_2.to_owned(),
+                "".to_string(),
                 RENAMED.to_owned(),
                 0f32,
                 vec![Product::new(
-                    HASH_3.to_owned(),
+                    "".to_string(),
                     "product3".to_owned(),
                     1,
                     false,
@@ -296,10 +289,8 @@ pub mod tests {
                 )],
             ),
         ];
-        assert_eq!(
-            Ok(expected),
-            get_aisles_in_store(c, &StoreId::new(HASH_1.to_owned()))
-        );
+        assert_eq!(Ok(expected), get_aisles_in_store(c, &store_id));
+        store_id
     }
 
     #[test]
@@ -307,7 +298,7 @@ pub mod tests {
         let client = Client::open(get_db_addr().as_str()).unwrap();
         let mut c = client.get_connection().unwrap();
 
-        get_aisles_in_store_for_test(&mut c)
+        get_aisles_in_store_for_test(&mut c);
     }
 
     #[test]
@@ -316,36 +307,27 @@ pub mod tests {
         let mut c = client.get_connection().unwrap();
 
         // this create a store, an aisle and put a product in it
-        db::products::tests::save_product_for_test(&mut c);
-        let aid = AisleId(HASH_1.to_owned());
+        let (aid, pid1) = db::products::tests::save_product_for_test(&mut c);
         // add another product
         let expected = Product::new(
-            HASH_2.to_owned(),
+            "".to_string(),
             "product2".to_owned(),
             1,
             false,
             Unit::Unit,
             1f32,
         );
-        assert_eq!(
-            Ok(expected),
-            db::products::save_product(&mut c, &AUTH, "product2", &aid)
-        );
-
+        let res = db::products::save_product(&mut c, &AUTH, "product2", &aid);
+        assert_eq!(Ok(expected), res);
+        let pid2 = res.unwrap().id();
         assert_eq!(Ok(()), delete_aisle(&mut c, &AUTH, &aid));
         assert_eq!(Ok(false), c.exists(&aisle_key(&aid)));
         assert_eq!(
             Ok(false),
             c.exists(&db::products::products_in_aisle_key(&aid))
         );
-        assert_eq!(
-            Ok(false),
-            c.exists(&db::products::product_key(&ProductId(HASH_1.to_owned())))
-        );
-        assert_eq!(
-            Ok(false),
-            c.exists(&db::products::product_key(&ProductId(HASH_2.to_owned())))
-        );
+        assert_eq!(Ok(false), c.exists(&db::products::product_key(&pid1)));
+        assert_eq!(Ok(false), c.exists(&db::products::product_key(&pid2)));
     }
 
     #[test]
@@ -353,44 +335,31 @@ pub mod tests {
         let client = Client::open(get_db_addr().as_str()).unwrap();
         let mut c = client.get_connection().unwrap();
 
-        save_aisle_for_test(&mut c);
-        add_2nd_aisle(&mut c);
-        fill_aisles(&mut c);
-        let aisle_in_store_key = aisles_in_store_key(&StoreId::new(HASH_1.to_owned()));
+        let (store_id, aisle_id1) = save_aisle_for_test(&mut c);
+        let aid2 = add_2nd_aisle(&mut c, &store_id);
+        let (p1, p2, p3) = fill_aisles(&mut c, &aisle_id1, &aid2);
+        let aisle_in_store_key = aisles_in_store_key(&store_id);
         let mut pipe = Pipeline::new(c.db);
         pipe.atomic();
         assert_eq!(
             Ok(()),
-            transaction_purge_aisles_in_store(&mut c, &mut pipe, &StoreId::new(HASH_1.to_owned()))
+            transaction_purge_aisles_in_store(&mut c, &mut pipe, &store_id)
         );
         assert_eq!(Ok(()), pipe.query(&mut c));
         assert_eq!(Ok(false), c.exists(&aisle_in_store_key));
+        assert_eq!(Ok(false), c.exists(&db::products::product_key(&p1)));
+        assert_eq!(Ok(false), c.exists(&db::products::product_key(&p2)));
+        assert_eq!(Ok(false), c.exists(&db::products::product_key(&p3)));
         assert_eq!(
             Ok(false),
-            c.exists(&db::products::product_key(&ProductId(HASH_1.to_owned())))
+            c.exists(&db::products::products_in_aisle_key(&aisle_id1))
         );
         assert_eq!(
             Ok(false),
-            c.exists(&db::products::product_key(&ProductId(HASH_2.to_owned())))
+            c.exists(&db::products::products_in_aisle_key(&aid2))
         );
-        assert_eq!(
-            Ok(false),
-            c.exists(&db::products::product_key(&ProductId(HASH_3.to_owned())))
-        );
-        assert_eq!(
-            Ok(false),
-            c.exists(&db::products::products_in_aisle_key(&AisleId(
-                HASH_1.to_owned()
-            )))
-        );
-        assert_eq!(
-            Ok(false),
-            c.exists(&db::products::products_in_aisle_key(&AisleId(
-                HASH_2.to_owned()
-            )))
-        );
-        assert_eq!(Ok(false), c.exists(&aisle_key(&AisleId(HASH_1.to_owned()))));
-        assert_eq!(Ok(false), c.exists(&aisle_key(&AisleId(HASH_2.to_owned()))));
+        assert_eq!(Ok(false), c.exists(&aisle_key(&aisle_id1)));
+        assert_eq!(Ok(false), c.exists(&aisle_key(&aid2)));
     }
 
     #[test]
@@ -398,7 +367,7 @@ pub mod tests {
         let client = Client::open(get_db_addr().as_str()).unwrap();
         let mut c = client.get_connection().unwrap();
 
-        save_aisle_for_test(&mut c);
+        let (_, aisle_id) = save_aisle_for_test(&mut c);
         let mut pipe = Pipeline::new(c.db);
         pipe.atomic();
         assert_eq!(
@@ -407,13 +376,10 @@ pub mod tests {
                 &mut c,
                 &mut pipe,
                 &AUTH,
-                &AisleItemWeight::new(HASH_1.to_owned(), 2.0f32)
+                &AisleItemWeight::new(aisle_id.to_string(), 2.0f32)
             )
         );
         assert_eq!(Ok(()), pipe.query(&mut c));
-        assert_eq!(
-            Ok(2.0f32),
-            c.hget(&aisle_key(&AisleId(HASH_1.to_owned())), AISLE_WEIGHT)
-        );
+        assert_eq!(Ok(2.0f32), c.hget(&aisle_key(&aisle_id), AISLE_WEIGHT));
     }
 }

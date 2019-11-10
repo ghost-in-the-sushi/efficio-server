@@ -130,11 +130,26 @@ pub struct StoreLightList {
     stores: Vec<StoreLight>,
 }
 
-#[derive(Debug, new, Serialize, PartialEq)]
+#[derive(Debug, new, Serialize)]
 pub struct Store {
     store_id: String,
     name: String,
     aisles: Vec<Aisle>,
+}
+
+impl PartialEq for Store {
+    fn eq(&self, other: &Store) -> bool {
+        #[cfg(not(test))]
+        {
+            self.store_id == other.store_id
+                && self.name == other.name
+                && self.aisles.eq(&other.aisles)
+        }
+        #[cfg(test)]
+        {
+            self.name == other.name && self.aisles.eq(&other.aisles)
+        }
+    }
 }
 
 #[derive(Debug, new, Serialize)]
@@ -147,7 +162,14 @@ pub struct Aisle {
 
 impl PartialEq for Aisle {
     fn eq(&self, other: &Aisle) -> bool {
-        self.aisle_id == other.aisle_id && self.name == other.name
+        #[cfg(not(test))]
+        {
+            self.aisle_id == other.aisle_id && self.name == other.name
+        }
+        #[cfg(test)]
+        {
+            self.name == other.name
+        }
     }
 }
 
@@ -168,6 +190,13 @@ impl Ord for Aisle {
         } else {
             Ordering::Greater
         }
+    }
+}
+
+#[cfg(test)]
+impl Aisle {
+    pub fn id(&self) -> AisleId {
+        AisleId(self.aisle_id.to_owned())
     }
 }
 
@@ -214,7 +243,14 @@ pub struct Product {
 
 impl PartialEq for Product {
     fn eq(&self, other: &Product) -> bool {
-        self.product_id == other.product_id && self.name == other.name
+        #[cfg(not(test))]
+        {
+            self.product_id == other.product_id && self.name == other.name
+        }
+        #[cfg(test)]
+        {
+            self.name == other.name
+        }
     }
 }
 
@@ -235,6 +271,13 @@ impl Ord for Product {
         } else {
             Ordering::Greater
         }
+    }
+}
+
+#[cfg(test)]
+impl Product {
+    pub fn id(&self) -> ProductId {
+        ProductId(self.product_id.to_owned())
     }
 }
 
@@ -288,7 +331,7 @@ impl EditProduct {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::salts::tests::*;
+    use crate::db::ids::tests::*;
 
     #[test]
     fn test_edit_product_has_as_least_a_field() {

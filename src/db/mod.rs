@@ -5,8 +5,8 @@ use redis::{self, Connection};
 use fake_redis::FakeConnection as Connection;
 
 pub mod aisles;
+pub mod ids;
 pub mod products;
-pub mod salts;
 pub mod sessions;
 pub mod stores;
 pub mod users;
