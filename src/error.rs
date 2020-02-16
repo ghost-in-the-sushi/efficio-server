@@ -1,10 +1,10 @@
 use std::error::Error;
 use std::fmt::Display;
 
-use failure::Fail;
 use r2d2;
 use redis::RedisError;
 use serde::Serialize;
+use thiserror::Error;
 use warp::http::StatusCode;
 
 pub const USERNAME_TAKEN: StatusCode = StatusCode::NOT_ACCEPTABLE;
@@ -13,13 +13,11 @@ pub const UNAUTHORISED: StatusCode = StatusCode::UNAUTHORIZED;
 pub const PERMISSION_DENIED: StatusCode = StatusCode::FORBIDDEN;
 pub const INTERNAL_ERROR: StatusCode = StatusCode::INTERNAL_SERVER_ERROR;
 
-#[derive(Debug, Clone, Fail, Serialize, PartialEq)]
+#[derive(Debug, Clone, Error, Serialize, PartialEq)]
 pub struct ServerError {
     #[serde(skip)]
     pub status: StatusCode,
     pub msg: String,
-    #[serde(skip)]
-    pub source: Option<String>,
 }
 
 impl Display for ServerError {
@@ -33,7 +31,6 @@ impl From<RedisError> for ServerError {
         ServerError {
             status: INTERNAL_ERROR,
             msg: err.description().to_string(),
-            source: err.source().and_then(|e| Some(e.to_string())),
         }
     }
 }
@@ -49,7 +46,6 @@ impl From<r2d2::Error> for ServerError {
         ServerError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             msg: err.description().to_string(),
-            source: err.source().and_then(|e| Some(e.to_string())),
         }
     }
 }
@@ -61,7 +57,6 @@ impl ServerError {
         ServerError {
             status,
             msg: msg.to_owned(),
-            source: None,
         }
     }
 }

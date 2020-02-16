@@ -1,4 +1,3 @@
-use failure::{self, Fail};
 use log::*;
 
 use crate::cli::*;
@@ -55,7 +54,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |user: User, mut c: PooledConnection| {
             user::create_user(&user, &mut *c)
                 .and_then(|token| Ok(warp::reply::json(&token)))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
+                .or_else(|e| Err(warp::reject::custom(e)))
         });
 
     // POST /login
@@ -66,7 +65,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |auth_info: AuthInfo, mut c: PooledConnection| {
             session::login(&auth_info, &mut *c)
                 .and_then(|token| Ok(warp::reply::json(&token)))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
+                .or_else(|e| Err(warp::reject::custom(e)))
         });
 
     // POST /logout
@@ -77,7 +76,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |id: String, auth: String, mut c: PooledConnection| {
             session::logout(&auth, &id, &mut *c)
                 .and_then(|()| Ok(warp::reply()))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
+                .or_else(|e| Err(warp::reject::custom(e)))
         });
 
     // DELETE /user
@@ -88,7 +87,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |id: String, auth: String, mut c: PooledConnection| {
             user::delete_user(&auth, &id, &mut *c)
                 .and_then(|()| Ok(warp::reply()))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
+                .or_else(|e| Err(warp::reject::custom(e)))
         });
 
     // POST /store
@@ -100,7 +99,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |auth, data: NameData, mut c: PooledConnection| {
             store::create_store(auth, &data, &mut *c)
                 .and_then(|store_id| Ok(warp::reply::json(&store_id)))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
+                .or_else(|e| Err(warp::reject::custom(e)))
         });
 
     // PUT /store/{id}
@@ -112,7 +111,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |id, auth, data: NameData, mut c: PooledConnection| {
             store::edit_store(auth, id, &data, &mut *c)
                 .and_then(|()| Ok(warp::reply()))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
+                .or_else(|e| Err(warp::reject::custom(e)))
         });
 
     // POST /store/<id>/aisle
@@ -125,7 +124,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
             move |store_id, auth, data: NameData, mut c: PooledConnection| {
                 aisle::create_aisle(auth, store_id, &data, &mut *c)
                     .and_then(|aisle| Ok(warp::reply::json(&aisle)))
-                    .or_else(|e| Err(warp::reject::custom(e.compat())))
+                    .or_else(|e| Err(warp::reject::custom(e)))
             },
         );
 
@@ -139,7 +138,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
             move |aisle_id, auth, data: NameData, mut c: PooledConnection| {
                 aisle::rename_aisle(auth, aisle_id, &data, &mut *c)
                     .and_then(|()| Ok(warp::reply()))
-                    .or_else(|e| Err(warp::reject::custom(e.compat())))
+                    .or_else(|e| Err(warp::reject::custom(e)))
             },
         );
 
@@ -153,7 +152,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
             move |aisle_id, auth, data: NameData, mut c: PooledConnection| {
                 product::create_product(auth, aisle_id, &data, &mut *c)
                     .and_then(|product| Ok(warp::reply::json(&product)))
-                    .or_else(|e| Err(warp::reject::custom(e.compat())))
+                    .or_else(|e| Err(warp::reject::custom(e)))
             },
         );
 
@@ -167,7 +166,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
             move |product_id, auth, data: EditProduct, mut c: PooledConnection| {
                 product::edit_product(auth, product_id, &data, &mut *c)
                     .and_then(|()| Ok(warp::reply()))
-                    .or_else(|e| Err(warp::reject::custom(e.compat())))
+                    .or_else(|e| Err(warp::reject::custom(e)))
             },
         );
 
@@ -179,7 +178,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |auth, mut c: PooledConnection| {
             store::list_stores(auth, &mut *c)
                 .and_then(|stores| Ok(warp::reply::json(&stores)))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
+                .or_else(|e| Err(warp::reject::custom(e)))
         });
 
     // GET /store/<id>
@@ -190,7 +189,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |store_id, auth, mut c: PooledConnection| {
             store::list_store(auth, store_id, &mut *c)
                 .and_then(|store| Ok(warp::reply::json(&store)))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
+                .or_else(|e| Err(warp::reject::custom(e)))
         });
 
     // DELETE /product/<id>
@@ -201,7 +200,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |product_id, auth, mut c: PooledConnection| {
             product::delete_product(auth, product_id, &mut *c)
                 .and_then(|()| Ok(warp::reply()))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
+                .or_else(|e| Err(warp::reject::custom(e)))
         });
 
     // DELETE /aisle/<id>
@@ -212,7 +211,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |aisle_id, auth, mut c: PooledConnection| {
             aisle::delete_aisle(auth, aisle_id, &mut *c)
                 .and_then(|()| Ok(warp::reply()))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
+                .or_else(|e| Err(warp::reject::custom(e)))
         });
 
     // DELETE /store/<id>
@@ -223,7 +222,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |store_id, auth, mut c: PooledConnection| {
             store::delete_store(auth, store_id, &mut *c)
                 .and_then(|()| Ok(warp::reply()))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
+                .or_else(|e| Err(warp::reject::custom(e)))
         });
 
     // PUT /sort_weight
@@ -235,7 +234,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |auth, data: EditWeight, mut c: PooledConnection| {
             misc::change_sort_weight(auth, &data, &mut *c)
                 .and_then(|()| Ok(warp::reply()))
-                .or_else(|e| Err(warp::reject::custom(e.compat())))
+                .or_else(|e| Err(warp::reject::custom(e)))
         });
 
     let post_routes = warp::post2()
@@ -279,8 +278,7 @@ pub fn start_server(opt: &Opt) -> error::Result<()> {
 }
 
 fn customize_error(err: Rejection) -> Result<impl Reply, Rejection> {
-    if let Some(server_error) = err.find_cause::<failure::Compat<error::ServerError>>() {
-        let server_error = server_error.get_ref();
+    if let Some(server_error) = err.find_cause::<error::ServerError>() {
         Ok(warp::reply::with_status(
             server_error.msg.to_owned(),
             server_error.status,
