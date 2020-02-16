@@ -1,13 +1,12 @@
 [package]
 name = "efficio-server"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Geobert Quach <geobert@protonmail.com>"]
 edition = "2018"
 
 [dependencies]
 fake_redis = { path = "libs/fake_redis" }
 warp = "0.1.20"
-structopt = "0.3.4"
 redis = "0.13.0"
 serde = { version = "1.0.102", features = ["derive"] }
 serde_json = "1.0.41"
@@ -29,6 +28,7 @@ pretty_env_logger = "0.3.1"
 uuid = { version="0.8.1", features=["v4"] }
 anyhow = "1.0.26"
 thiserror = "1.0.11"
+argh = "0.1.3"
 
 
 

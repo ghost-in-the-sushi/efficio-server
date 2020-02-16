@@ -1,12 +1,12 @@
-use structopt::StructOpt;
+use argh::FromArgs;
 
+#[derive(FromArgs)]
 /// Efficio's backend
-#[derive(StructOpt, Debug)]
 pub struct Opt {
-    /// Database host
-    #[structopt(long = "db_host")]
+    /// database host
+    #[argh(option, short = 'h')]
     pub db_host: Option<String>,
-    /// Database port
-    #[structopt(long = "db_port")]
+    /// database port
+    #[argh(option, short = 'p')]
     pub db_port: Option<u32>,
 }

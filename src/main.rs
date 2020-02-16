@@ -9,11 +9,10 @@ mod types;
 #[cfg(not(test))]
 fn main() -> error::Result<()> {
     use log::*;
-    use structopt::StructOpt;
 
     pretty_env_logger::init_timed();
 
     info!("Starting Efficio…");
-    let opt = cli::Opt::from_args();
+    let opt: cli::Opt = argh::from_env();
     endpoints::routes::start_server(&opt)
 }
