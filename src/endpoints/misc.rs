@@ -9,7 +9,7 @@ use redis::Connection;
 #[cfg(test)]
 use fake_redis::FakeConnection as Connection;
 
-pub fn change_sort_weight(
+pub async fn change_sort_weight(
     auth: String,
     data: &EditWeight,
     c: &mut Connection,
@@ -40,7 +40,7 @@ pub fn change_sort_weight(
 
 // Reset the DB, only available in debug compilation
 #[cfg(not(test))]
-pub fn nuke(c: &mut Connection) -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
+pub async fn nuke(c: &mut Connection) -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
     if cfg!(debug_assertions) {
         redis::cmd("FLUSHDB")
             .query::<()>(c)
@@ -52,7 +52,7 @@ pub fn nuke(c: &mut Connection) -> Result<impl warp::reply::Reply, warp::reject:
 }
 
 #[cfg(test)]
-pub fn nuke(_: &mut Connection) -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
+pub async fn nuke(_: &mut Connection) -> Result<impl warp::reply::Reply, warp::reject::Rejection> {
     if false {
         Ok(warp::reply())
     } else {

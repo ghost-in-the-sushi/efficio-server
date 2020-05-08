@@ -1,4 +1,3 @@
-use argon2rs;
 use hex_view::HexView;
 use rand::{self, Rng};
 use uuid::Uuid;
@@ -46,10 +45,12 @@ fn get_next_id<RV: std::str::FromStr>(
             s
         }
     };
-    RV::from_str(&hash(&id.to_string(), &salt)).or(Err(ServerError::new(
-        error::INTERNAL_ERROR,
-        "Creation of hashed id failed, can't be",
-    )))
+    RV::from_str(&hash(&id.to_string(), &salt)).or_else(|_| {
+        Err(ServerError::new(
+            error::INTERNAL_ERROR,
+            "Creation of hashed id failed, can't be",
+        ))
+    })
 }
 
 pub fn get_next_user_id(c: &mut Connection) -> Result<UserId> {
@@ -58,28 +59,28 @@ pub fn get_next_user_id(c: &mut Connection) -> Result<UserId> {
 
 pub fn get_next_store_id() -> StoreId {
     StoreId::new(
-        Uuid::new_v4()
+        (*Uuid::new_v4()
             .to_hyphenated_ref()
-            .encode_lower(&mut Uuid::encode_buffer())
-            .to_string(),
+            .encode_lower(&mut Uuid::encode_buffer()))
+        .to_string(),
     )
 }
 
 pub fn get_next_aisle_id() -> AisleId {
     AisleId(
-        Uuid::new_v4()
+        (*Uuid::new_v4()
             .to_hyphenated_ref()
-            .encode_lower(&mut Uuid::encode_buffer())
-            .to_string(),
+            .encode_lower(&mut Uuid::encode_buffer()))
+        .to_string(),
     )
 }
 
 pub fn get_next_product_id() -> ProductId {
     ProductId(
-        Uuid::new_v4()
+        (*Uuid::new_v4()
             .to_hyphenated_ref()
-            .encode_lower(&mut Uuid::encode_buffer())
-            .to_string(),
+            .encode_lower(&mut Uuid::encode_buffer()))
+        .to_string(),
     )
 }
 

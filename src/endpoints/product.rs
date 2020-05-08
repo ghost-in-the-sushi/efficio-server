@@ -9,7 +9,7 @@ use redis::Connection;
 #[cfg(test)]
 use fake_redis::FakeConnection as Connection;
 
-pub fn create_product(
+pub async fn create_product(
     auth: String,
     aisle_id: String,
     data: &NameData,
@@ -20,7 +20,7 @@ pub fn create_product(
     db::products::save_product(c, &auth, &data.name, &AisleId(aisle_id))
 }
 
-pub fn edit_product(
+pub async fn edit_product(
     auth: String,
     product_id: String,
     data: &EditProduct,
@@ -38,7 +38,7 @@ pub fn edit_product(
     }
 }
 
-pub fn delete_product(auth: String, product_id: String, c: &mut Connection) -> Result<()> {
+pub async fn delete_product(auth: String, product_id: String, c: &mut Connection) -> Result<()> {
     let auth = Auth(&auth);
     db::sessions::validate_session(c, &auth)?;
     db::products::delete_product(c, &auth, &ProductId(product_id))

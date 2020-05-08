@@ -54,7 +54,7 @@ pub fn save_user(c: &mut Connection, user: &User) -> Result<ConnectionToken> {
         c.hset(USERS_LIST, &norm_username, user_id.to_string())?;
         let auth = gen_auth(&mut rng);
         db::sessions::store_session(c, &auth, &user_id)?;
-        Ok(ConnectionToken::new(auth.into(), user_id.to_string()))
+        Ok(ConnectionToken::new(auth, user_id.to_string()))
     }
 }
 

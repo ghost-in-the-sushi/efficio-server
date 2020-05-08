@@ -1,5 +1,5 @@
 #[cfg(not(test))]
-use redis::{self, transaction, Commands, Connection, Pipeline, PipelineCommands};
+use redis::{self, transaction, Commands, Connection, Pipeline};
 
 #[cfg(test)]
 use fake_redis::{transaction, FakeConnection as Connection, FakePipeline as Pipeline};

@@ -8,7 +8,7 @@ use redis::Connection;
 #[cfg(test)]
 use fake_redis::FakeConnection as Connection;
 
-pub fn create_aisle(
+pub async fn create_aisle(
     auth: String,
     store_id: String,
     data: &NameData,
@@ -19,7 +19,7 @@ pub fn create_aisle(
     db::aisles::save_aisle(c, &auth, &StoreId::new(store_id), &data.name)
 }
 
-pub fn rename_aisle(
+pub async fn rename_aisle(
     auth: String,
     aisle_id: String,
     data: &NameData,
@@ -30,7 +30,7 @@ pub fn rename_aisle(
     db::aisles::edit_aisle(c, &auth, &AisleId(aisle_id), &data.name)
 }
 
-pub fn delete_aisle(auth: String, aisle_id: String, c: &mut Connection) -> Result<()> {
+pub async fn delete_aisle(auth: String, aisle_id: String, c: &mut Connection) -> Result<()> {
     let auth = Auth(&auth);
     db::sessions::validate_session(c, &auth)?;
     db::aisles::delete_aisle(c, &auth, &AisleId(aisle_id))

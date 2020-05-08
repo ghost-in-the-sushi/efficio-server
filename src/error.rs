@@ -1,7 +1,5 @@
-use std::error::Error;
 use std::fmt::Display;
 
-use r2d2;
 use redis::RedisError;
 use serde::Serialize;
 use thiserror::Error;
@@ -20,6 +18,8 @@ pub struct ServerError {
     pub msg: String,
 }
 
+impl warp::reject::Reject for ServerError {}
+
 impl Display for ServerError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{:?}", self)
@@ -30,7 +30,7 @@ impl From<RedisError> for ServerError {
     fn from(err: RedisError) -> Self {
         ServerError {
             status: INTERNAL_ERROR,
-            msg: err.description().to_string(),
+            msg: err.to_string(),
         }
     }
 }
@@ -45,7 +45,16 @@ impl From<r2d2::Error> for ServerError {
     fn from(err: r2d2::Error) -> Self {
         ServerError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: err.description().to_string(),
+            msg: err.to_string(),
+        }
+    }
+}
+
+impl From<&r2d2::Error> for ServerError {
+    fn from(err: &r2d2::Error) -> Self {
+        ServerError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: err.to_string(),
         }
     }
 }

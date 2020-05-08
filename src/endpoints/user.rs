@@ -1,7 +1,5 @@
 use lazy_static::lazy_static;
 use regex::Regex;
-use validator;
-use zxcvbn;
 
 #[cfg(not(test))]
 use redis::Connection;
@@ -16,14 +14,14 @@ use crate::types::*;
 
 const MIN_ENTROPY_SCORE: u8 = 2;
 
-pub fn create_user(user: &User, c: &mut Connection) -> Result<ConnectionToken> {
+pub async fn create_user(user: &User, c: &mut Connection) -> Result<ConnectionToken> {
     validate_email(&user.email)?;
     validate_password(&user)?;
     validate_username(&user.username)?;
     db::users::save_user(c, &user)
 }
 
-pub fn delete_user(auth: &String, user_id: &String, c: &mut Connection) -> Result<()> {
+pub async fn delete_user(auth: &str, user_id: &str, c: &mut Connection) -> Result<()> {
     let auth = Auth(&auth);
     db::sessions::validate_session(c, &auth)?;
     db::users::delete_user(c, &auth, &UserId(user_id.to_string()))
