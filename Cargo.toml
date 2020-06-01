@@ -1,32 +1,8 @@
-[package]
-name = "efficio-server"
-version = "0.2.0"
-authors = ["Geobert Quach <geobert@protonmail.com>"]
-edition = "2018"
+# [package]
+# name = "efficio-web"
+# version = "0.1.0"
+# authors = ["Geobert Quach <geobert@protonmail.com>"]
+# edition = "2018"
 
-[dependencies]
-fake_redis = { path = "libs/fake_redis" }
-warp = "0.2.2"
-redis = "0.15.1"
-serde = { version = "1.0.106", features = ["derive"] }
-serde_json = "1.0.52"
-serde_repr = "0.1.5"
-rand = "0.7.3"
-argon2rs = "0.2.5"
-lazy_static = "1.4.0"
-hex-view = "0.1.3"
-validator = "0.10.0"
-validator_derive = "0.10.0"
-zxcvbn = "2.0.1"
-regex = "1.3.7"
-derive_deref = "1.1.0"
-derive-new = "0.5.8"
-r2d2 = "0.8.8"
-r2d2_redis = "0.13.0"
-log = "0.4.8"
-pretty_env_logger = "0.4.0"
-uuid = { version = "0.8.1", features = ["v4"] }
-anyhow = "1.0.28"
-thiserror = "1.0.16"
-argh = "0.1.3"
-tokio = { version = "0.2.20", features = ["rt-threaded", "tcp", "macros"] }
+[workspace]
+members = [ "backend", "frontend" ]
