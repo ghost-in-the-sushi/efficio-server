@@ -7,8 +7,10 @@ use fake_redis::FakeConnection as Connection;
 #[cfg(not(test))]
 use redis::{self, Commands, Connection};
 
-use crate::error::{self, *};
-use crate::types::*;
+use crate::{
+    error::{self, *},
+    types::*,
+};
 
 const NEXT_USER_ID: &str = "next_user_id";
 

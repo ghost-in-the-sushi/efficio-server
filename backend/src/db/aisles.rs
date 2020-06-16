@@ -4,9 +4,7 @@ use redis::{self, transaction, Commands, Connection, Pipeline};
 #[cfg(test)]
 use fake_redis::{transaction, FakeConnection as Connection, FakePipeline as Pipeline};
 
-use crate::db;
-use crate::error::*;
-use crate::types::*;
+use crate::{db, error::Result, types::*};
 
 const AISLE_NAME: &str = "name";
 const AISLE_WEIGHT: &str = "sort_weight";

@@ -7,10 +7,7 @@ use redis::Connection;
 #[cfg(test)]
 use fake_redis::FakeConnection as Connection;
 
-use crate::db;
-use crate::endpoints::INVALID_PARAMS;
-use crate::error::{Result, ServerError};
-use crate::types::*;
+use crate::{endpoints::INVALID_PARAMS, types::*, error::{ServerError, Result}, db};
 
 const MIN_ENTROPY_SCORE: u8 = 2;
 

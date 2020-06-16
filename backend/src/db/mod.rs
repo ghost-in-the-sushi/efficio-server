@@ -11,8 +11,7 @@ pub mod sessions;
 pub mod stores;
 pub mod users;
 
-use crate::error::*;
-use crate::types::*;
+use crate::{error::*, types::*};
 
 pub(crate) fn verify_permission(wanted_user_id: &UserId, user_id: &UserId) -> Result<()> {
     if wanted_user_id != user_id {

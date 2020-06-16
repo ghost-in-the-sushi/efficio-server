@@ -6,9 +6,11 @@ use fake_redis::FakeConnection as Connection;
 #[cfg(not(test))]
 use redis::{self, Commands, Connection};
 
-use crate::db;
-use crate::error::{self, *};
-use crate::types::*;
+use crate::{
+    db,
+    error::{self, *},
+    types::*,
+};
 
 const USER_PWD: &str = "password";
 const USER_MAIL: &str = "email";

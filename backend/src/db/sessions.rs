@@ -4,8 +4,10 @@ use redis::{self, transaction, Commands, Connection};
 #[cfg(test)]
 use fake_redis::{transaction, FakeConnection as Connection};
 
-use crate::error::{self, Result, ServerError};
-use crate::types::*;
+use crate::{
+    error::{self, Result, ServerError},
+    types::*,
+};
 
 const SESSIONS_LIST: &str = "sessions";
 

@@ -1,14 +1,10 @@
 use std::convert::Infallible;
-// use std::sync::Arc;
 
 use log::*;
 use r2d2_redis::RedisConnectionManager;
 use warp::{self, path, Filter, Rejection, Reply};
 
-use crate::cli::*;
-use crate::endpoints::*;
-use crate::error;
-use crate::types::*;
+use crate::{types::*, error::{self, ServerError}, endpoints::*, cli::*};
 
 const HEADER_AUTH: &str = "x-auth-token";
 const DEFAULT_DB_PORT: u32 = 6379;
@@ -299,10 +295,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
             .or(delete_user),
     );
 
-    let routes = warp::path("api").and(get_routes
-        .or(post_routes)
-        .or(put_routes)
-        .or(del_routes))
+    let routes = warp::path("api")
+        .and(get_routes.or(post_routes).or(put_routes).or(del_routes))
         .recover(customize_error);
     info!("Efficio's ready for requests...");
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;

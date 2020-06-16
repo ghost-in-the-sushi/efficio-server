@@ -4,9 +4,7 @@ use redis::{transaction, Commands, Connection};
 #[cfg(test)]
 use fake_redis::{transaction, FakeConnection as Connection};
 
-use crate::db;
-use crate::error::*;
-use crate::types::*;
+use crate::{db, error::Result, types::*};
 
 const STORE_NAME: &str = "name";
 const STORE_OWNER: &str = "owner_id";
