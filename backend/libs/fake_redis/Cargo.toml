@@ -5,6 +5,6 @@ authors = ["Geobert Quach <geobert@protonmail.com>"]
 edition = "2018"
 
 [dependencies]
-redis = "0.13.0"
+redis = "0.15.1"
 lazy_static = "1.4.0"
 derive-new = "0.5.8"
