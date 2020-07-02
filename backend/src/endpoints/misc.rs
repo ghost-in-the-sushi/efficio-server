@@ -1,4 +1,4 @@
-use crate::{types::*, error, endpoints::INVALID_PARAMS, db};
+use crate::{db, endpoints::INVALID_PARAMS, error, types::*};
 
 #[cfg(not(test))]
 use redis::Connection;

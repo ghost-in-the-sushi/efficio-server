@@ -9,11 +9,9 @@ mod types;
 #[cfg(not(test))]
 #[tokio::main]
 async fn main() -> error::Result<()> {
-    use log::*;
-
     pretty_env_logger::init_timed();
 
-    info!("Starting Efficio…");
+    log::info!("Starting Efficio…");
     let opt: cli::Opt = argh::from_env();
     endpoints::routes::start_server(&opt).await
 }

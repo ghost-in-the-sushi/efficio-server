@@ -2,7 +2,6 @@ use std::fmt::Display;
 
 use redis::RedisError;
 use serde::Serialize;
-use thiserror::Error;
 use warp::http::StatusCode;
 
 pub const USERNAME_TAKEN: StatusCode = StatusCode::NOT_ACCEPTABLE;
@@ -11,12 +10,14 @@ pub const UNAUTHORISED: StatusCode = StatusCode::UNAUTHORIZED;
 pub const PERMISSION_DENIED: StatusCode = StatusCode::FORBIDDEN;
 pub const INTERNAL_ERROR: StatusCode = StatusCode::INTERNAL_SERVER_ERROR;
 
-#[derive(Debug, Clone, Error, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct ServerError {
     #[serde(skip)]
     pub status: StatusCode,
     pub msg: String,
 }
+
+impl std::error::Error for ServerError {}
 
 impl warp::reject::Reject for ServerError {}
 

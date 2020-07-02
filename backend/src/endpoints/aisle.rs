@@ -1,4 +1,4 @@
-use crate::{error::Result, types::*, db};
+use crate::{db, error::Result, types::*};
 
 #[cfg(not(test))]
 use redis::Connection;
