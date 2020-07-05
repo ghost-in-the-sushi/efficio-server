@@ -41,7 +41,6 @@ fn get_next_id<RV: std::str::FromStr>(
     let salt: String = match c.exists(salt_key) {
         Ok(true) => c.get(salt_key)?,
         _ => {
-            eprintln!("generate_salt");
             let s = generate_salt();
             c.set(salt_key, s.clone())?;
             s

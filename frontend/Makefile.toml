@@ -1,4 +1,4 @@
 [tasks.build]
 clear = true
 command = "wasm-pack"
-args = ["build", "--target", "web", "--out-name", "wasm", "--out-dir", "../backend/static"]
+args = ["build", "--target", "web", "--out-name", "wasm", "--out-dir", "../backend/static/pkg"]
