@@ -46,11 +46,11 @@ fn get_next_id<RV: std::str::FromStr>(
             s
         }
     };
-    RV::from_str(&hash(&id.to_string(), &salt)).or_else(|_| {
-        Err(ServerError::new(
+    RV::from_str(&hash(&id.to_string(), &salt)).map_err(|_| {
+        ServerError::new(
             error::INTERNAL_ERROR,
             "Creation of hashed id failed, can't be",
-        ))
+        )
     })
 }
 

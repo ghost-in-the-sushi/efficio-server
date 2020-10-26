@@ -80,11 +80,8 @@ pub fn delete_user(c: &mut Connection, auth: &Auth, wanted_user_id: &UserId) -> 
 pub fn login(c: &mut Connection, auth_info: &AuthInfo) -> Result<ConnectionToken> {
     let user_id = UserId(
         c.hget(USERS_LIST, &auth_info.username.to_lowercase())
-            .or_else(|_| {
-                Err(ServerError::new(
-                    error::INVALID_USER_OR_PWD,
-                    "Invalid usename or password",
-                ))
+            .map_err(|_| {
+                ServerError::new(error::INVALID_USER_OR_PWD, "Invalid usename or password")
             })?,
     );
     let user_key = user_key(&user_id);

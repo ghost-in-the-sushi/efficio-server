@@ -39,7 +39,7 @@ fn validate_email(mail: &str) -> Result<()> {
 
 fn validate_password(user: &User) -> Result<()> {
     let entropy = zxcvbn::zxcvbn(&user.password, &[&user.username, &user.email])
-        .or_else(|_| Err(ServerError::new(INVALID_PARAMS, "Empty password")))?;
+        .map_err(|_| ServerError::new(INVALID_PARAMS, "Empty password"))?;
 
     if entropy.score() < MIN_ENTROPY_SCORE {
         Err(ServerError::new(

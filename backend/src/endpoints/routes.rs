@@ -56,8 +56,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |user: User, mut c: PooledConnection| async move {
             user::create_user(&user, &mut *c)
                 .await
-                .and_then(|token| Ok(warp::reply::json(&token)))
-                .or_else(|e| Err(warp::reject::custom(e)))
+                .map(|token| warp::reply::json(&token))
+                .map_err(warp::reject::custom)
         });
 
     // POST /login
@@ -69,8 +69,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
             move |auth_info: AuthInfo, mut c: PooledConnection| async move {
                 session::login(&auth_info, &mut *c)
                     .await
-                    .and_then(|token| Ok(warp::reply::json(&token)))
-                    .or_else(|e| Err(warp::reject::custom(e)))
+                    .map(|token| warp::reply::json(&token))
+                    .map_err(warp::reject::custom)
             },
         );
 
@@ -83,8 +83,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
             move |id: String, auth: String, mut c: PooledConnection| async move {
                 session::logout(&auth, &id, &mut *c)
                     .await
-                    .and_then(|()| Ok(warp::reply()))
-                    .or_else(|e| Err(warp::reject::custom(e)))
+                    .map(|()| warp::reply())
+                    .map_err(warp::reject::custom)
             },
         );
 
@@ -97,8 +97,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
             move |id: String, auth: String, mut c: PooledConnection| async move {
                 user::delete_user(&auth, &id, &mut *c)
                     .await
-                    .and_then(|()| Ok(warp::reply()))
-                    .or_else(|e| Err(warp::reject::custom(e)))
+                    .map(|()| warp::reply())
+                    .map_err(warp::reject::custom)
             },
         );
 
@@ -112,8 +112,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
             move |auth, data: NameData, mut c: PooledConnection| async move {
                 store::create_store(auth, &data, &mut *c)
                     .await
-                    .and_then(|store_id| Ok(warp::reply::json(&store_id)))
-                    .or_else(|e| Err(warp::reject::custom(e)))
+                    .map(|store_id| warp::reply::json(&store_id))
+                    .map_err(warp::reject::custom)
             },
         );
 
@@ -127,8 +127,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
             move |id, auth, data: NameData, mut c: PooledConnection| async move {
                 store::edit_store(auth, id, &data, &mut *c)
                     .await
-                    .and_then(|()| Ok(warp::reply()))
-                    .or_else(|e| Err(warp::reject::custom(e)))
+                    .map(|()| warp::reply())
+                    .map_err(warp::reject::custom)
             },
         );
 
@@ -142,8 +142,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
             move |store_id, auth, data: NameData, mut c: PooledConnection| async move {
                 aisle::create_aisle(auth, store_id, &data, &mut *c)
                     .await
-                    .and_then(|aisle| Ok(warp::reply::json(&aisle)))
-                    .or_else(|e| Err(warp::reject::custom(e)))
+                    .map(|aisle| warp::reply::json(&aisle))
+                    .map_err(warp::reject::custom)
             },
         );
 
@@ -157,8 +157,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
             move |aisle_id, auth, data: NameData, mut c: PooledConnection| async move {
                 aisle::rename_aisle(auth, aisle_id, &data, &mut *c)
                     .await
-                    .and_then(|()| Ok(warp::reply()))
-                    .or_else(|e| Err(warp::reject::custom(e)))
+                    .map(|()| warp::reply())
+                    .map_err(warp::reject::custom)
             },
         );
 
@@ -172,8 +172,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
             move |aisle_id, auth, data: NameData, mut c: PooledConnection| async move {
                 product::create_product(auth, aisle_id, &data, &mut *c)
                     .await
-                    .and_then(|product| Ok(warp::reply::json(&product)))
-                    .or_else(|e| Err(warp::reject::custom(e)))
+                    .map(|product| warp::reply::json(&product))
+                    .map_err(warp::reject::custom)
             },
         );
 
@@ -187,8 +187,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
             move |product_id, auth, data: EditProduct, mut c: PooledConnection| async move {
                 product::edit_product(auth, product_id, &data, &mut *c)
                     .await
-                    .and_then(|()| Ok(warp::reply()))
-                    .or_else(|e| Err(warp::reject::custom(e)))
+                    .map(|()| warp::reply())
+                    .map_err(warp::reject::custom)
             },
         );
 
@@ -200,8 +200,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |auth, mut c: PooledConnection| async move {
             store::list_stores(auth, &mut *c)
                 .await
-                .and_then(|stores| Ok(warp::reply::json(&stores)))
-                .or_else(|e| Err(warp::reject::custom(e)))
+                .map(|stores| warp::reply::json(&stores))
+                .map_err(warp::reject::custom)
         });
 
     // GET /store/<id>
@@ -212,8 +212,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |store_id, auth, mut c: PooledConnection| async move {
             store::list_store(auth, store_id, &mut *c)
                 .await
-                .and_then(|store| Ok(warp::reply::json(&store)))
-                .or_else(|e| Err(warp::reject::custom(e)))
+                .map(|store| warp::reply::json(&store))
+                .map_err(warp::reject::custom)
         });
 
     // DELETE /product/<id>
@@ -225,8 +225,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
             move |product_id, auth, mut c: PooledConnection| async move {
                 product::delete_product(auth, product_id, &mut *c)
                     .await
-                    .and_then(|()| Ok(warp::reply()))
-                    .or_else(|e| Err(warp::reject::custom(e)))
+                    .map(|()| warp::reply())
+                    .map_err(warp::reject::custom)
             },
         );
 
@@ -238,8 +238,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |aisle_id, auth, mut c: PooledConnection| async move {
             aisle::delete_aisle(auth, aisle_id, &mut *c)
                 .await
-                .and_then(|()| Ok(warp::reply()))
-                .or_else(|e| Err(warp::reject::custom(e)))
+                .map(|()| warp::reply())
+                .map_err(warp::reject::custom)
         });
 
     // DELETE /store/<id>
@@ -250,8 +250,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
         .and_then(move |store_id, auth, mut c: PooledConnection| async move {
             store::delete_store(auth, store_id, &mut *c)
                 .await
-                .and_then(|()| Ok(warp::reply()))
-                .or_else(|e| Err(warp::reject::custom(e)))
+                .map(|()| warp::reply())
+                .map_err(warp::reject::custom)
         });
 
     // PUT /sort_weight
@@ -264,8 +264,8 @@ pub async fn start_server(opt: &Opt) -> error::Result<()> {
             move |auth, data: EditWeight, mut c: PooledConnection| async move {
                 misc::change_sort_weight(auth, &data, &mut *c)
                     .await
-                    .and_then(|()| Ok(warp::reply()))
-                    .or_else(|e| Err(warp::reject::custom(e)))
+                    .map(|()| warp::reply())
+                    .map_err(warp::reject::custom)
             },
         );
 
